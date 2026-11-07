@@ -2,141 +2,249 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Salitan — Pickleball Open Play</title>
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#10150f">
+<!-- the app is always dark, so the browser bar matches the header in both schemes -->
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#10150f">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#10150f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
+  /* ============================================================
+     Mobile-first pass (MajorMajor phone checklist + Emil Kowalski's
+     motion rules): 44px tap targets, press feedback on everything
+     tappable, safe areas, 12px+ text for outdoor reading, zoom allowed,
+     and motion limited to transform/opacity with two shared curves.
+     ============================================================ */
   :root{
-    --bg:#10150f; --card:#1b231a; --card2:#242f22; --line:#33402f;
-    --ink:#eef3ea; --dim:#93a08c; --accent:#c3f53c; --accent-ink:#1a2404;
+    --bg:#10150f; --card:#1b231a; --card2:#242f22; --line:#38463a;
+    --ink:#f1f5ee; --dim:#a9b6a2; --accent:#c3f53c; --accent-ink:#1a2404;
     --teamA:#5fd4f5; --teamB:#ffb85c; --danger:#ff7a6e; --win:#8de08a;
+    --lv1:#8de08a; --lv2:#f2d65e; --lv3:#ff8fb1;
+    --tap:44px;
+    --ease-out:cubic-bezier(.23,1,.32,1);       /* enter / exit / press */
+    --ease-in-out:cubic-bezier(.77,0,.175,1);   /* things moving on screen */
+    --ease-drawer:cubic-bezier(.32,.72,0,1);    /* iOS-like bottom sheet */
+    --nav-h:60px;
   }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0; padding:0;}
-  body{background:var(--bg); color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; padding-bottom:80px;}
+  *{box-sizing:border-box;}
+  html{-webkit-tap-highlight-color:transparent; -webkit-text-size-adjust:100%;}
+  /* no pull-to-refresh / rubber-band reload in the middle of a session */
+  html,body{margin:0; padding:0; overscroll-behavior:none;}
+  body{background:var(--bg); color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; font-size:15px; line-height:1.35;
+    padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 16px); min-height:100vh; min-height:100dvh;}
   h1,h2,h3{margin:0;}
-  button{font-family:inherit; border:none; border-radius:10px; cursor:pointer; font-size:15px;}
-  input{font-family:inherit; font-size:16px; background:var(--card2); border:1px solid var(--line); color:var(--ink); border-radius:10px; padding:10px 12px; outline:none;}
+  h3{font-size:17px;}
+  button{font-family:inherit; border:none; border-radius:12px; cursor:pointer; font-size:15px; color:inherit; touch-action:manipulation; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+    transition:transform 160ms var(--ease-out), background-color 150ms ease, color 150ms ease, opacity 150ms ease;}
+  /* asymmetric: the press lands fast (100ms), the release settles (160ms) */
+  button:active{transform:scale(.97); transition-duration:100ms;}
+  button:disabled{opacity:.45; cursor:default;}
+  input{font-family:inherit; font-size:16px; background:var(--card2); border:1px solid var(--line); color:var(--ink); border-radius:12px; padding:0 14px; min-height:48px; outline:none; min-width:0;}
   input:focus{border-color:var(--accent);}
-  .wrap{max-width:560px; margin:0 auto; padding:14px;}
-  header.top{display:flex; align-items:center; justify-content:space-between; padding:14px 14px 4px; max-width:560px; margin:0 auto;}
-  header.top h1{font-size:20px; letter-spacing:.3px;}
-  header.top h1 span{color:var(--accent);}
+  .wrap{max-width:560px; margin:0 auto; padding:12px 16px;}
   .subtle{color:var(--dim); font-size:13px;}
-  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px;}
-  .btn{background:var(--card2); color:var(--ink); padding:10px 14px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:12px;}
+  .btn{background:var(--card2); color:var(--ink); padding:0 16px; min-height:var(--tap); font-weight:600;}
+  .btn.big{min-height:52px; font-size:16px;}
   .btn.primary{background:var(--accent); color:var(--accent-ink); font-weight:700;}
   .btn.ghost{background:transparent; color:var(--dim); border:1px solid var(--line);}
   .btn.danger{background:transparent; color:var(--danger); border:1px solid var(--line);}
-  .btn.small{padding:6px 10px; font-size:13px; border-radius:8px;}
+  .btn.small{min-height:40px; padding:0 12px; font-size:14px; border-radius:10px;}
+  .ibtn{width:var(--tap); height:var(--tap); flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; background:transparent; border:1px solid var(--line); border-radius:12px; font-size:18px; color:var(--dim);}
+  .ibtn.danger{color:var(--danger);}
+  .ibtn.on{border-color:var(--accent); color:var(--accent);}
   .row{display:flex; gap:8px; align-items:center;}
   .row .grow{flex:1;}
-  /* tabs */
-  nav.tabs{position:fixed; bottom:0; left:0; right:0; background:#151b14; border-top:1px solid var(--line); display:flex; z-index:20;}
-  nav.tabs button{flex:1; background:none; color:var(--dim); padding:12px 0 max(12px, env(safe-area-inset-bottom)); font-size:13px; border-radius:0;}
-  nav.tabs button.on{color:var(--accent); font-weight:700;}
+  .hint{color:var(--dim); font-size:13px; line-height:1.5; margin-top:10px;}
+  .hidden{display:none !important;}
+  /* header */
+  header.top{display:flex; align-items:center; justify-content:space-between; gap:10px; max-width:560px; margin:0 auto;
+    padding:max(12px, env(safe-area-inset-top, 0px)) 16px 2px;}
+  header.top h1{font-size:21px; letter-spacing:.3px;}
+  header.top h1 span{color:var(--accent);}
+  .status{font-size:13px; color:var(--dim); text-align:right;}
+  .status .live{color:var(--accent); font-weight:700;}
+  /* bottom tabs */
+  nav.tabs{position:fixed; bottom:0; left:0; right:0; background:#151b14; border-top:1px solid var(--line); display:flex; z-index:20;
+    padding:0 max(8px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(8px, env(safe-area-inset-left, 0px));}
+  nav.tabs button{flex:1; background:none; color:var(--dim); height:var(--nav-h); font-size:12px; font-weight:600; border-radius:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;}
+  nav.tabs button .ic{font-size:20px; line-height:1; filter:grayscale(1); opacity:.7; transition:opacity 150ms ease;}
+  nav.tabs button.on{color:var(--accent);}
+  nav.tabs button.on .ic{filter:none; opacity:1;}
+  nav.tabs button:active{transform:none; opacity:.7;}
   /* court */
-  .court{border:1px solid var(--line); border-radius:14px; margin-bottom:12px; overflow:hidden;}
-  .court .head{display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--card2); font-size:13px; color:var(--dim);}
-  .court .head b{color:var(--ink); font-size:15px;}
-  .court .body{padding:12px 14px; background:var(--card);}
-  .badge{font-size:11px; padding:3px 8px; border-radius:99px; background:var(--card); border:1px solid var(--line);}
+  .court{border:1px solid var(--line); border-radius:16px; margin-bottom:12px; overflow:hidden; background:var(--card);}
+  .court .head{display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--card2);}
+  .court .head b{font-size:16px;}
+  .court .body{padding:12px;}
+  .badge{font-size:12px; font-weight:600; padding:4px 10px; border-radius:99px; border:1px solid var(--line); color:var(--dim);}
   .badge.play{color:var(--accent); border-color:var(--accent);}
   .badge.stage{color:var(--teamB); border-color:var(--teamB);}
-  .teams{display:flex; align-items:stretch; gap:8px;}
-  .team{flex:1; border-radius:12px; padding:8px; display:flex; flex-direction:column; gap:8px;}
-  .team.a{background:rgba(95,212,245,.08); border:1px solid rgba(95,212,245,.35);}
-  .team.b{background:rgba(255,184,92,.08); border:1px solid rgba(255,184,92,.35);}
-  .team .tname{font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--dim); text-align:center;}
+  .teams{display:flex; align-items:stretch; gap:6px;}
+  .team{flex:1; min-width:0; border-radius:14px; padding:8px; display:flex; flex-direction:column; gap:6px; position:relative;}
+  .team.a{background:rgba(95,212,245,.08); border:1px solid rgba(95,212,245,.4);}
+  .team.b{background:rgba(255,184,92,.08); border:1px solid rgba(255,184,92,.4);}
+  .team .tname{font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; text-align:center;}
+  .team.a .tname{color:var(--teamA);} .team.b .tname{color:var(--teamB);}
   .vs{align-self:center; color:var(--dim); font-size:12px; font-weight:700;}
-  .chip{background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:10px 10px; text-align:center; font-size:15px; font-weight:600; user-select:none; touch-action:none; position:relative;}
-  .chip small{display:block; font-weight:400; color:var(--dim); font-size:11px; margin-top:1px;}
-  .chip.sel{outline:2px solid var(--accent); outline-offset:1px;}
+  .chip{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:10px 6px; min-height:58px; text-align:center; font-size:16px; font-weight:700;
+    user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:pan-y; position:relative; overflow-wrap:anywhere;
+    transition:transform 160ms var(--ease-out);}
+  .chip:active{transform:scale(.97); transition-duration:100ms;}
+  .chip small{display:block; font-weight:500; color:var(--dim); font-size:12px; margin-top:2px;}
+  .chip.sel{outline:3px solid var(--accent); outline-offset:1px;}
+  .chip.lifting{transform:scale(1.03); border-color:var(--accent);}
   .chip.drophint{outline:2px dashed var(--accent); outline-offset:1px;}
-  .chip.vacant{border-style:dashed; background:transparent; color:var(--dim); font-weight:400; cursor:pointer;}
-  .dropzone{outline:2px dashed var(--accent); outline-offset:2px; border-radius:14px;}
+  .chip.vacant{border-style:dashed; background:transparent; color:var(--dim); font-weight:500; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .dropzone{outline:2px dashed var(--accent); outline-offset:2px; border-radius:16px;}
+  .dragghost{position:fixed; left:0; top:0; z-index:99; pointer-events:none; width:150px; background:var(--card2); border:1px solid var(--accent); border-radius:12px; padding:10px; text-align:center; font-weight:700;
+    filter:drop-shadow(0 8px 18px rgba(0,0,0,.5)); will-change:transform;}
   .dragghost.benchhint{border-color:var(--danger); color:var(--danger);}
-  .dragghost{position:fixed; z-index:99; pointer-events:none; opacity:.92; width:150px; background:var(--card2); border:1px solid var(--accent); border-radius:10px; padding:10px; text-align:center; font-weight:600; box-shadow:0 8px 24px rgba(0,0,0,.5);}
   .court .actions{display:flex; gap:8px; margin-top:12px;}
-  .court .actions .btn{flex:1;}
-  .empty-court{color:var(--dim); font-size:14px; text-align:center; padding:8px 0;}
-  .timer{font-variant-numeric:tabular-nums; color:var(--accent); font-weight:700;}
+  .court .actions .btn{flex:1; min-height:48px;}
+  .court .tip{font-size:12px; color:var(--dim); text-align:center; margin-top:8px;}
+  .empty-court{color:var(--dim); font-size:14px; text-align:center; padding:10px 0;}
+  .timer{font-variant-numeric:tabular-nums; font-weight:700;}
   /* queue */
-  .qitem{display:flex; align-items:center; gap:10px; padding:10px; background:var(--card2); border:1px solid var(--line); border-radius:10px; margin-bottom:8px;}
+  .qitem{display:flex; align-items:center; gap:8px; padding:8px 8px 8px 10px; background:var(--card2); border:1px solid var(--line); border-radius:14px; margin-bottom:8px;}
   .qitem:last-child{margin-bottom:0;}
-  .qpos{width:24px; height:24px; border-radius:50%; background:var(--card2); color:var(--dim); font-size:12px; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0;}
+  .qpos{width:26px; height:26px; border-radius:50%; background:var(--card); color:var(--dim); font-size:13px; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0;}
   .qitem.next .qpos{background:var(--accent); color:var(--accent-ink);}
-  .qname{flex:1; font-weight:600;}
-  .qname[data-chip]{touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none;}
-  .qgrab{color:var(--dim); margin-right:2px;}
-  .qname .meta{font-weight:400; color:var(--dim); font-size:12px;}
-  .tag{font-size:11px; padding:2px 7px; border-radius:99px; border:1px solid var(--line); color:var(--dim);}
-  .tag.w{color:var(--win); border-color:var(--win);}
-  .tag.zz{color:var(--teamB); border-color:var(--teamB);}
-  .hint{color:var(--dim); font-size:12.5px; line-height:1.5; margin-top:10px;}
-  /* players table */
-  table{width:100%; border-collapse:collapse; font-size:14px;}
-  th{color:var(--dim); font-weight:600; font-size:12px; text-align:left; padding:6px 4px; border-bottom:1px solid var(--line);}
-  td{padding:8px 4px; border-bottom:1px solid var(--line);}
-  tr:last-child td{border-bottom:none;}
-  .st{font-size:11px; padding:2px 7px; border-radius:99px; border:1px solid var(--line); color:var(--dim); white-space:nowrap;}
+  .qmain{flex:1; min-width:0; padding:4px 0;}
+  .qmain[data-chip]{touch-action:pan-y; cursor:grab; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;}
+  .qline{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+  .qline b{font-size:16px; overflow-wrap:anywhere;}
+  .meta{color:var(--dim); font-size:13px; margin-top:2px;}
+  .upnext{border:1.5px solid var(--accent); border-radius:16px; padding:8px; margin:12px 0 4px; background:rgba(195,245,60,.06);}
+  .upnext .label{font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--accent); margin:2px 4px 8px;}
+  .upnext .label .subtle{font-size:12px; font-weight:500; text-transform:none; letter-spacing:0;}
+  .upnext .qitem{border-color:rgba(195,245,60,.35);}
+  .waitlabel{font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--dim); margin:14px 4px 8px;}
+  .quickadd{display:flex; gap:8px; margin-top:12px;}
+  .quickadd input{flex:1;}
+  details.help{margin-top:12px; border-top:1px solid var(--line); padding-top:4px;}
+  details.help summary{min-height:var(--tap); display:flex; align-items:center; color:var(--dim); font-size:14px; font-weight:600; cursor:pointer; list-style:none;}
+  details.help summary::-webkit-details-marker{display:none;}
+  details.help summary::after{content:'▾'; margin-left:6px;}
+  details.help[open] summary::after{content:'▴';}
+  details.help ul{margin:0; padding-left:18px; color:var(--dim); font-size:13px; line-height:1.6;}
+  /* players list */
+  .prow{padding:12px 0; border-bottom:1px solid var(--line);}
+  .prow:last-child{border-bottom:none;}
+  .prow .top, .prow .bot{display:flex; align-items:center; gap:8px;}
+  .prow .bot{margin-top:6px;}
+  .prow .who{flex:1; min-width:0;}
+  .prow .who b{font-size:16px; overflow-wrap:anywhere;}
+  .prow .acts{display:flex; gap:6px;}
+  .st{font-size:12px; font-weight:600; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--dim); white-space:nowrap;}
   .st.playing{color:var(--accent); border-color:var(--accent);}
   .st.break{color:var(--teamB); border-color:var(--teamB);}
+  .stepper{display:flex; align-items:center; gap:4px;}
+  .stepper .val{min-width:40px; text-align:center; font-size:20px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .setrow{display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:52px;}
+  /* tables (standings) */
+  table{width:100%; border-collapse:collapse; font-size:15px;}
+  td{padding:10px 4px; border-bottom:1px solid var(--line);}
+  tr:last-child td{border-bottom:none;}
+  .tag{font-size:12px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--dim); white-space:nowrap;}
+  .tag.zz{color:var(--teamB); border-color:var(--teamB);}
   /* log */
-  .match{padding:10px 4px; border-bottom:1px solid var(--line); font-size:14px; line-height:1.5;}
+  .match{padding:12px 2px; border-bottom:1px solid var(--line); font-size:15px; line-height:1.45;}
   .match:last-child{border-bottom:none;}
-  .match .who{font-weight:600;}
+  .match .who{font-weight:700;}
   .match .score{color:var(--accent); font-weight:700;}
-  .match .meta{color:var(--dim); font-size:12px;}
+  .match .meta{font-size:12px;}
   /* setup */
-  .plist{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
-  .ptag{background:var(--card2); border:1px solid var(--line); border-radius:99px; padding:7px 12px; font-size:14px; display:flex; gap:8px; align-items:center;}
+  .plist{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;}
+  .ptag{background:var(--card2); border:1px solid var(--line); border-radius:99px; padding:0 4px 0 14px; min-height:var(--tap); font-size:15px; display:flex; gap:8px; align-items:center; cursor:pointer;
+    user-select:none; -webkit-user-select:none; transition:transform 160ms var(--ease-out);}
+  .ptag:active{transform:scale(.97);}
   .ptag b{font-weight:600;}
-  .ptag .x{color:var(--danger); font-weight:700; cursor:pointer; padding:0 2px;}
-  label.lbl{display:block; color:var(--dim); font-size:13px; margin:14px 0 6px;}
-  /* modal */
-  .overlay{position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px;}
-  .modal{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; width:100%; max-width:420px;}
+  .ptag .x{width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; color:var(--danger); font-weight:700; border-radius:50%;}
+  label.lbl{display:block; color:var(--dim); font-size:14px; margin:16px 0 6px;}
+  /* levels */
+  .lvb{display:inline-flex; align-items:center; font-size:12px; font-weight:700; padding:2px 9px; border-radius:99px; border:1px solid var(--line); color:var(--dim); background:transparent; white-space:nowrap;}
+  button.lvb{min-height:36px; padding:0 12px; font-size:13px;}
+  .lvb.lv1{color:var(--lv1); border-color:var(--lv1);}
+  .lvb.lv2{color:var(--lv2); border-color:var(--lv2);}
+  .lvb.lv3{color:var(--lv3); border-color:var(--lv3);}
+  .lvl{font-weight:700;} .lvl.lv1{color:var(--lv1);} .lvl.lv2{color:var(--lv2);} .lvl.lv3{color:var(--lv3);}
+  .toggle{display:flex; justify-content:space-between; align-items:center; gap:12px; width:100%; background:var(--card2); padding:12px 14px; text-align:left; min-height:var(--tap);}
+  .toggle .sw{width:44px; height:26px; border-radius:99px; background:var(--line); position:relative; flex-shrink:0; transition:background-color 160ms ease;}
+  .toggle .sw::after{content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:var(--ink); transition:transform 160ms var(--ease-out), background-color 160ms ease;}
+  .toggle.on .sw{background:var(--accent);} .toggle.on .sw::after{transform:translateX(18px); background:var(--accent-ink);}
+  /* modal (bottom sheet on phones) */
+  .overlay{position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:flex-end; justify-content:center; z-index:50; animation:fade 180ms ease;}
+  .modal{background:var(--card); border:1px solid var(--line); border-radius:20px 20px 0 0; padding:20px 16px calc(16px + env(safe-area-inset-bottom, 0px)); width:100%; max-width:480px;
+    max-height:85vh; max-height:85dvh; overflow:auto; overscroll-behavior:contain; animation:sheetup 260ms var(--ease-drawer);}
+  /* exit is quicker than entry: the system response snaps */
+  .overlay.closing{animation:fadeout 150ms ease forwards; pointer-events:none;}
+  .overlay.closing .modal{animation:sheetdown 180ms var(--ease-out) forwards;}
+  @media (min-width:600px){ .overlay{align-items:center; padding:20px;} .modal{border-radius:20px; animation:pop 200ms var(--ease-out);}
+    .overlay.closing .modal{animation:popout 150ms var(--ease-out) forwards;} }
   .modal h3{margin-bottom:4px;}
-  .scorerow{display:flex; gap:10px; align-items:center; margin:14px 0;}
-  .scorerow input{width:100%; text-align:center; font-size:20px; font-weight:700;}
-  .winbtns{display:flex; gap:10px;}
-  .winbtns .btn{flex:1; padding:14px 8px; font-weight:700;}
-  .winbtns .wa{background:rgba(95,212,245,.15); color:var(--teamA); border:1px solid var(--teamA);}
-  .winbtns .wb{background:rgba(255,184,92,.15); color:var(--teamB); border:1px solid var(--teamB);}
-  .toast{position:fixed; bottom:76px; left:50%; transform:translateX(-50%); background:var(--card2); border:1px solid var(--line); color:var(--ink); padding:10px 16px; border-radius:99px; font-size:13.5px; z-index:60; box-shadow:0 6px 20px rgba(0,0,0,.4); white-space:nowrap;}
-  .hidden{display:none !important;}
+  .fteams{display:flex; gap:10px; margin:16px 0 12px;}
+  .fteam{flex:1; min-width:0; border-radius:14px; padding:10px; display:flex; flex-direction:column; gap:8px; transition:opacity 150ms ease;}
+  .fteam.a{background:rgba(95,212,245,.08); border:1px solid rgba(95,212,245,.45);}
+  .fteam.b{background:rgba(255,184,92,.08); border:1px solid rgba(255,184,92,.45);}
+  .fteam .names{font-weight:700; text-align:center; min-height:40px; display:flex; align-items:center; justify-content:center; overflow-wrap:anywhere;}
+  .fteam input{width:100%; text-align:center; font-size:26px; font-weight:700; min-height:56px;}
+  .fteam .btn{min-height:52px; font-weight:700;}
+  .fteam.a .btn{background:rgba(95,212,245,.18); color:var(--teamA);}
+  .fteam.b .btn{background:rgba(255,184,92,.18); color:var(--teamB);}
+  .fteam.lead .btn{outline:2px solid currentColor;}
+  .fteam.trail{opacity:.55;}
+  /* toast */
+  .toast{position:fixed; left:0; right:0; margin:0 auto; width:fit-content; max-width:calc(100% - 32px); bottom:calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 12px);
+    background:var(--card2); border:1px solid var(--line); color:var(--ink); padding:12px 18px; border-radius:16px; font-size:14px; text-align:center; z-index:60;
+    filter:drop-shadow(0 6px 16px rgba(0,0,0,.4)); pointer-events:none;
+    /* transitions, not keyframes: a new toast mid-animation retargets instead of restarting */
+    opacity:0; transform:translateY(8px); transition:opacity 200ms var(--ease-out), transform 200ms var(--ease-out);}
+  .toast.show{opacity:1; transform:none;}
+  /* finish session */
+  .holdbtn{position:relative; overflow:hidden; width:100%; min-height:52px; background:var(--card2); color:var(--danger); border:1px solid var(--danger); border-radius:12px; font-weight:700; touch-action:none;}
+  .holdbtn:active{transform:none;}
+  .holdbtn .fill{position:absolute; inset:0; background:rgba(255,122,110,.28); transform:scaleX(0); transform-origin:left center; transition:transform 150ms var(--ease-out);}
+  .holdbtn.arming .fill{transform:scaleX(1); transition:transform 1.2s linear;}
+  .holdbtn .txt{position:relative;}
   /* motion */
   @keyframes fade{from{opacity:0}}
-  @keyframes pop{from{opacity:0; transform:scale(.92) translateY(10px)}}
-  @keyframes toastup{from{opacity:0; transform:translate(-50%,12px)}}
-  @keyframes winpulse{0%{box-shadow:0 0 0 0 rgba(141,224,138,.6)}100%{box-shadow:0 0 0 16px rgba(141,224,138,0)}}
-  .overlay{animation:fade .18s ease}
-  .modal{animation:pop .22s cubic-bezier(.2,.8,.2,1)}
-  .toast{animation:toastup .25s cubic-bezier(.2,.8,.2,1)}
-  .team.winflash{border-color:var(--win); animation:winpulse .5s ease}
-  .team.winflash .chip{border-color:var(--win)}
-  /* finish session */
-  .holdbtn{position:relative; overflow:hidden; width:100%; padding:14px; background:var(--card2); color:var(--danger); border:1px solid var(--danger); border-radius:12px; font-weight:700; touch-action:none; user-select:none;}
-  .holdbtn .fill{position:absolute; inset:0; width:0; background:rgba(255,122,110,.28); transition:width .15s;}
-  .holdbtn.arming .fill{width:100%; transition:width 1.2s linear;}
-  .holdbtn .txt{position:relative;}
-  @media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important} }
+  @keyframes pop{from{opacity:0; transform:scale(.96)}}
+  @keyframes sheetup{from{transform:translateY(100%)}}
+  @keyframes fadeout{to{opacity:0}}
+  @keyframes sheetdown{to{transform:translateY(100%)}}
+  @keyframes popout{to{opacity:0; transform:scale(.96)}}
+  @keyframes winring{from{opacity:.9; transform:scale(1)} to{opacity:0; transform:scale(1.06)}}
+  .team.winflash{border-color:var(--win);}
+  .team.winflash .chip{border-color:var(--win);}
+  .team.winflash::after{content:''; position:absolute; inset:-2px; border:2px solid var(--win); border-radius:16px; pointer-events:none; animation:winring 280ms var(--ease-out) forwards;}
+  /* reduced motion: keep fades and color, drop movement and scaling */
+  @media (prefers-reduced-motion: reduce){
+    button:active, .chip:active, .ptag:active, .chip.lifting{transform:none;}
+    .modal{animation:fade 180ms ease;}
+    .overlay.closing .modal{animation:fadeout 150ms ease forwards;}
+    .toast{transform:none;}
+    .team.winflash::after{animation:none; opacity:0;}
+    .toggle .sw::after{transition:background-color 160ms ease;}
+  }
 </style>
 </head>
 <body>
 <header class="top">
   <h1>🥒 Sali<span>tan</span></h1>
-  <button class="btn ghost small" data-action="new-session" id="btnNewSession">New session</button>
+  <div class="status" id="status"></div>
 </header>
 <div class="wrap" id="app"></div>
 <nav class="tabs hidden" id="tabs">
-  <button data-action="tab" data-tab="play" class="on">Courts</button>
-  <button data-action="tab" data-tab="players">Players</button>
-  <button data-action="tab" data-tab="log">Log</button>
+  <button data-action="tab" data-tab="play" class="on"><span class="ic">🏓</span>Courts</button>
+  <button data-action="tab" data-tab="players"><span class="ic">👥</span>Players</button>
+  <button data-action="tab" data-tab="log"><span class="ic">📋</span>Session</button>
 </nav>
 <div id="modalHost"></div>
 <div id="toastHost"></div>
@@ -149,18 +257,21 @@ const LS_KEY = 'pickle-queue-v1';
 
 let state = null;
 
-function freshState(names, courtCount){
+const LEVELS = ['No level', 'Novice', 'Intermediate', 'Advanced'];
+const LV_SHORT = ['', 'N', 'I', 'A'];
+
+function freshState(entries, courtCount){
   const s = {
     screen:'main', startedAt:Date.now(), sid:Math.random().toString(36).slice(2,10), rev:0, tick:0, matchSeq:0,
-    players:[], courts:[], matches:[], undoStack:[]
+    players:[], courts:[], matches:[], undoStack:[], settings:{ levelMatch:true }
   };
-  names.forEach(n => s.players.push(mkPlayer(s, n, 0)));
+  entries.forEach(e => s.players.push(mkPlayer(s, e.n, 0, e.lv)));
   for(let i=1;i<=courtCount;i++) s.courts.push(mkCourt(i));
   return s;
 }
-function mkPlayer(s, name, base){
+function mkPlayer(s, name, base, level){
   return { id:'p'+(++s.tick)+'_'+Math.random().toString(36).slice(2,6),
-    name, games:0, base:(base||0), wins:0, losses:0, wonLast:false, partnerId:null,
+    name, games:0, base:(base||0), wins:0, losses:0, wonLast:false, partnerId:null, level:(level||1), // everyone starts as Novice
     status:'queued', queuedAt:(++s.tick), history:[] };
 }
 function mkCourt(i){ return { id:i, phase:'idle', teams:null, startedAt:null }; }
@@ -170,25 +281,27 @@ function nameOf(id){ const p=byId(id); return p?p.name:'?'; }
 function effGames(p){ return p.games + p.base; }
 function courtPlayers(c){ return c.teams ? [...c.teams[0], ...c.teams[1]].filter(Boolean) : []; }
 
-/* Priority: manual pins first (by pinned order), then fewest (effective) games →
-   recent winners → waited longest. Pins are set by drag-reordering the queue and
-   clear automatically when a player goes on court, so fairness resumes. */
-function prioritySort(list){
-  return list.slice().sort((a,b)=>{
-    const ap = a.pin!=null, bp = b.pin!=null;
-    if(ap && bp) return a.pin-b.pin;
-    if(ap!==bp) return ap ? -1 : 1;
-    return effGames(a)-effGames(b) ||
-      ((b.wonLast?1:0)-(a.wonLast?1:0)) ||
-      a.queuedAt-b.queuedAt;
-  });
-}
+/* Queue order: fewest (effective) games, then longest wait. Every player has a
+   sort key {g, t}. Dragging a player in the queue gives ONLY that player a
+   manual key ("pin") that sits between their new neighbours, so they keep moving
+   up naturally as others play, and nobody else gets frozen. Pins clear when the
+   player goes on court. */
+function qKey(p){ return (p.pin && typeof p.pin==='object') ? p.pin : { g:effGames(p), t:p.queuedAt }; }
+function keyCmp(a,b){ return (a.g-b.g) || (a.t-b.t); }
+function prioritySort(list){ return list.slice().sort((a,b)=>keyCmp(qKey(a), qKey(b))); }
 function reorderQueue(movePid, targetPid){
-  const ids = prioritySort(queuedPlayers()).map(p=>p.id);
-  const from = ids.indexOf(movePid), to = ids.indexOf(targetPid);
+  const q = prioritySort(queuedPlayers());
+  const from = q.findIndex(p=>p.id===movePid), to = q.findIndex(p=>p.id===targetPid);
   if(from<0 || to<0 || from===to) return false;
-  ids.splice(from,1); ids.splice(to,0,movePid);
-  ids.forEach((id,i)=>{ const p=byId(id); if(p) p.pin=i; });
+  const rest = q.filter(p=>p.id!==movePid);
+  const ti = rest.findIndex(p=>p.id===targetPid);
+  const ins = to<from ? ti : ti+1;            // moving up: before target; down: after it
+  const before = rest[ins-1] ? qKey(rest[ins-1]) : null, after = rest[ins] ? qKey(rest[ins]) : null;
+  let key;
+  if(before && after && before.g===after.g) key = { g:after.g, t:(before.t+after.t)/2 };
+  else if(after) key = { g:after.g, t:after.t-1 };
+  else key = { g:before.g, t:before.t+1 };
+  byId(movePid).pin = key;
   return true;
 }
 function queuedPlayers(){ return state.players.filter(p=>p.status==='queued'); }
@@ -211,30 +324,111 @@ function setPartner(aId, bId){
   }
 }
 
-/* Pick next 4 respecting fixed pairs: a paired player only goes on if their
-   partner fits too; if that leaves the court short, pairs win over the last single.
-   Only breaks a pair as a last resort so courts never idle with 4+ waiting. */
-function pickFour(){
+/* ---------- matchmaking ----------
+   Every time a court frees up we score the possible lineups and take the
+   cheapest. Fairness dominates: the person who has waited most always plays,
+   and someone is only skipped for a better level match if they have the SAME
+   game count as whoever goes instead. Then teams are split so they're evenly
+   matched (wins + level) and people rotate through new partners/opponents. */
+const W = {
+  invert:1000, // skipping a player who has played FEWER games (or was manually placed) — effectively never
+  halfPair:200, // sending one fixed partner on without the other — only to stop someone who's played less sitting again
+  anchor:  15, // skipping whoever is #1 in the queue (only happens when fixed pairs force it)
+  rest:    25, // putting someone straight back on from the last match while a waiting player sits
+  skip:     4, // skipping a same-game-count player who has waited longer (to get a better match)
+  spread:   5, // per level of difference between strongest and weakest in the four
+  partner:  4, // per time two teammates have already partnered
+  opp:      1, // per time two players have already faced each other
+  balance:  3, // per strength-point difference between the two teams (win rate + level)
+};
+const WIN_SPAN = 0.75; // win rate nudges strength by at most ±0.75 — less than one level step
+
+/* Team-balancing strength. Level is the main signal (always used, even with
+   level grouping off) because wins can mislead: an advanced player taking it
+   easy with novices still counts as advanced. Win rate (smoothed, so one lucky
+   game barely counts) fine-tunes it within a level. Keeps two strong players
+   from being teamed up against two weaker ones. */
+function strength(p){
+  const wr = ((p.wins||0)+1) / ((p.games||0)+2);
+  return lv(p) + WIN_SPAN * (wr-0.5) * 2;
+}
+const LOOKAHEAD = 4; // how far past the top 4 we look for a better level match
+
+function lv(p){ return (p && p.level) || 0; }
+function levelMatchOn(){ return !state.settings || state.settings.levelMatch!==false; }
+
+function pairCounts(){
+  const part = new Map(), opp = new Map();
+  const k = (a,b)=> a<b ? a+'|'+b : b+'|'+a;
+  const inc = (m,a,b)=> m.set(k(a,b), (m.get(k(a,b))||0)+1);
+  for(const m of state.matches){
+    if(!m.ai || !m.bi) continue; // older records only stored names
+    for(const T of [m.ai, m.bi]) if(T.length===2) inc(part, T[0], T[1]);
+    for(const x of m.ai) for(const y of m.bi) inc(opp, x, y);
+  }
+  return { part:(a,b)=>part.get(k(a,b))||0, opp:(a,b)=>opp.get(k(a,b))||0 };
+}
+
+const SPLITS = [[[0,1],[2,3]], [[0,2],[1,3]], [[0,3],[1,2]]];
+function splitCost(ps, sp, pc){
+  const A = sp[0].map(i=>ps[i]), B = sp[1].map(i=>ps[i]);
+  for(const p of ps){ // fixed partners must share a team
+    if(!p.partnerId || !ps.some(x=>x.id===p.partnerId)) continue;
+    const together = [A,B].some(T=>T.includes(p) && T.some(x=>x.id===p.partnerId));
+    if(!together) return Infinity;
+  }
+  let c = W.partner * (pc.part(A[0].id, A[1].id) + pc.part(B[0].id, B[1].id));
+  for(const x of A) for(const y of B) c += W.opp * pc.opp(x.id, y.id);
+  const sum = T => T.reduce((n,p)=>n+strength(p), 0);
+  c += W.balance * Math.abs(sum(A)-sum(B));
+  return c;
+}
+function bestSplit(ps, pc){
+  let best = null, bc = Infinity;
+  for(const sp of shuffleArr(SPLITS)){ const c = splitCost(ps, sp, pc); if(c<bc){ bc=c; best=sp; } }
+  if(!best) return null;
+  return { cost:bc, teams:[best[0].map(i=>ps[i].id), best[1].map(i=>ps[i].id)] };
+}
+
+/* Returns { players:[4], teams:[[a,b],[c,d]] } or null. Pure: doesn't change state. */
+function chooseFour(pc){
   const q = prioritySort(queuedPlayers());
   if(q.length<4) return null;
-  const chosen = [];
-  const inChosen = id => chosen.some(p=>p.id===id);
-  for(const p of q){
-    if(chosen.length>=4) break;
-    if(inChosen(p.id)) continue;
-    const mate = p.partnerId ? q.find(x=>x.id===p.partnerId && !inChosen(x.id)) : null;
-    if(mate){ if(chosen.length<=2) chosen.push(p, mate); }
-    else chosen.push(p);
-  }
-  if(chosen.length===3){
-    for(const p of q){
-      if(inChosen(p.id) || !p.partnerId) continue;
-      const mate = q.find(x=>x.id===p.partnerId && !inChosen(x.id));
-      if(mate){ chosen.pop(); chosen.push(p, mate); break; }
+  pc = pc || pairCounts();
+  const rank = new Map(q.map((p,i)=>[p.id,i]));
+  const mateOf = p => p.partnerId && rank.has(p.partnerId) ? byId(p.partnerId) : null;
+  const pool = q.slice(0, 4+LOOKAHEAD);
+  for(const p of pool.slice()){ const m = mateOf(p); if(m && !pool.includes(m)) pool.push(m); } // pairs travel together
+  const anchor = q[0], n = pool.length;
+  const last = state.matches[0], justPlayed = new Set(last && last.ai ? [...last.ai, ...last.bi] : []);
+  let best = null;
+  for(let a=0;a<n;a++) for(let b=a+1;b<n;b++) for(let c3=b+1;c3<n;c3++) for(let d=c3+1;d<n;d++){
+    const ps = [pool[a], pool[b], pool[c3], pool[d]];
+    // a chosen player who came in as someone's partner borrows that partner's place
+    const eff = p => { const m = mateOf(p); return m && ps.includes(m) ? Math.min(rank.get(p.id), rank.get(m.id)) : rank.get(p.id); };
+    let cost = W.halfPair * ps.filter(p=>{ const m = mateOf(p); return m && !ps.includes(m); }).length;
+    for(const s of pool){
+      if(ps.includes(s)) continue;
+      if(s===anchor) cost += W.anchor;
+      for(const c of ps){
+        if(eff(c) <= rank.get(s.id)) continue;
+        if(qKey(s).g < qKey(c).g || s.pin) { cost += W.invert; continue; }
+        cost += W.skip;
+        if(justPlayed.has(c.id) && !justPlayed.has(s.id)) cost += W.rest;
+      }
     }
+    if(levelMatchOn()){
+      const known = ps.map(lv).filter(Boolean);
+      if(known.length>1) cost += W.spread * (Math.max(...known)-Math.min(...known));
+    }
+    const split = bestSplit(ps, pc);
+    if(!split) continue;
+    cost += split.cost;
+    if(!best || cost < best.cost) best = { cost, players:ps, teams:split.teams };
   }
-  if(chosen.length===4) return chosen;
-  return q.slice(0,4); // last resort: break a pair rather than stall the court
+  if(best) return best;
+  const ps = q.slice(0,4); // last resort: break a pair rather than stall the court
+  return { players:ps, teams:randomTeams(ps.map(p=>p.id)) };
 }
 
 /* Split 4 into teams, keeping fixed pairs on the same side */
@@ -251,14 +445,15 @@ function teamsFor(ids){
   return randomTeams(ids);
 }
 
-/* Fill any idle court with the top 4 of the priority queue */
+/* Fill any idle court with the best-scoring four from the queue */
 function fillCourts(){
+  const pc = pairCounts();
   for(const c of state.courts){
     if(c.phase!=='idle') continue;
-    const four = pickFour();
-    if(!four) continue;
-    four.forEach(p=>{ p.status='playing'; p.pin=null; });
-    c.teams = teamsFor(four.map(p=>p.id));
+    const pick = chooseFour(pc);
+    if(!pick) continue;
+    pick.players.forEach(p=>{ p.status='playing'; p.pin=null; });
+    c.teams = pick.teams;
     c.phase = 'staging';
     c.startedAt = null;
   }
@@ -284,11 +479,30 @@ function shuffleTeams(courtId){
   if(ids.length<4){
     takeFromQueue(4-ids.length).forEach(p=>{ p.status='playing'; p.pin=null; ids.push(p.id); });
   }
-  if(ids.length===4){ c.teams = teamsFor(ids); }
+  if(ids.length===4){ const sp = bestSplit(ids.map(byId), pairCounts()); c.teams = sp ? sp.teams : teamsFor(ids); }
   else {
     const s = shuffleArr(ids);
     c.teams = [[s[0]||'', s[1]||''], [s[2]||'', s[3]||'']];
   }
+}
+
+/* One tap = next of the 3 possible teammate pairings for this court
+   (skips pairings that would separate 🔗 fixed partners). */
+function swapTeammates(courtId){
+  const c = state.courts.find(x=>x.id===courtId);
+  if(!c || !c.teams || courtPlayers(c).length<4) return false;
+  const ids = courtPlayers(c).slice().sort(), a = ids[0], others = ids.slice(1);
+  const mateNow = c.teams.find(T=>T.includes(a)).find(x=>x!==a);
+  const start = others.indexOf(mateNow);
+  for(let step=1; step<=2; step++){
+    const mate = others[(start+step)%3], rest = others.filter(x=>x!==mate);
+    const ps = [a, mate, ...rest].map(byId);
+    if(splitCost(ps, [[0,1],[2,3]], { part:()=>0, opp:()=>0 })===Infinity) continue; // would split fixed partners
+    const aOnA = c.teams[0].includes(a); // keep everyone on the same side of the screen where possible
+    c.teams = aOnA ? [[a, mate], rest] : [rest, [a, mate]];
+    return true;
+  }
+  return false;
 }
 
 function startMatch(courtId){
@@ -364,9 +578,10 @@ function pushUndo(){
 function undo(){
   const snap = state.undoStack.pop();
   if(!snap) return false;
-  const keep = state.undoStack;
-  state = JSON.parse(snap);
+  const keep = state.undoStack, rev = state.rev||0;
+  state = normalizeState(JSON.parse(snap));
   state.undoStack = keep;
+  state.rev = Math.max(state.rev||0, rev); // never go backwards, or live viewers ignore us
   return true;
 }
 
@@ -376,6 +591,7 @@ function finishMatch(courtId, winnerIdx, sa, sb){
   pushUndo();
   const rec = { id:(++state.matchSeq), court:c.id,
     a:c.teams[0].filter(Boolean).map(nameOf), b:c.teams[1].filter(Boolean).map(nameOf),
+    ai:c.teams[0].filter(Boolean), bi:c.teams[1].filter(Boolean),
     sa:(sa??null), sb:(sb??null), w:winnerIdx, t:Date.now() };
   state.matches.unshift(rec);
   for(let ti=0; ti<2; ti++){
@@ -394,14 +610,19 @@ function finishMatch(courtId, winnerIdx, sa, sb){
   fillCourts();
 }
 
-function addPlayer(name){
-  /* Late joiners are assumed to have already played as many games as the
-     current leaders — they join the back of the rotation with no catch-up
-     priority. Their real played count still shows in stats. */
-  const active = state.players.filter(p=>p.status!=='out');
-  const base = active.length ? Math.max(...active.map(effGames)) : 0;
-  const p = mkPlayer(state, name, base);
-  if(base>0) p.late = true;
+function addPlayer(name, level){
+  /* Late joiners go on the NEXT court that frees up (it's polite). They start
+     level with whoever has played the least, and are put at the front of that
+     group; several late arrivals keep their arrival order. After their first
+     game they rotate normally. Their real played count still shows in stats. */
+  const active = state.players.filter(p=>p.status==='queued' || p.status==='playing');
+  const base = active.length ? Math.min(...active.map(effGames)) : 0;
+  const p = mkPlayer(state, name, base, level);
+  if(state.matches.length){
+    p.late = true;
+    state.lateSeq = (state.lateSeq||0)+1;
+    p.queuedAt = -1e6 + state.lateSeq; // ahead of everyone else at this game count
+  }
   state.players.push(p);
   fillCourts();
   return p;
@@ -427,7 +648,13 @@ function removePlayer(pid){
 function setCourtCount(n){
   n = Math.max(1, Math.min(12, n|0));
   const cur = state.courts.length;
-  if(n>cur){ for(let i=cur+1;i<=n;i++) state.courts.push(mkCourt(i)); fillCourts(); }
+  if(n>cur){
+    // reuse the lowest free court numbers so two courts never share an id
+    const used = new Set(state.courts.map(c=>c.id));
+    for(let id=1; state.courts.length<n; id++) if(!used.has(id)) state.courts.push(mkCourt(id));
+    state.courts.sort((a,b)=>a.id-b.id);
+    fillCourts();
+  }
   else if(n<cur){
     // remove idle courts from the end only
     for(let i=cur-1; i>=0 && state.courts.length>n; i--){
@@ -436,10 +663,12 @@ function setCourtCount(n){
   }
 }
 
-var IS_VIEWER = false, adopting = false;
+var IS_VIEWER = false;
 function save(){
-  if(!IS_VIEWER){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }
-  if(typeof pushLive==='function' && !adopting) pushLive();
+  if(IS_VIEWER) return; // viewers are read-only
+  state.rev = (state.rev||0)+1; // bump before storing so a reload never reuses a version number
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){}
+  if(typeof pushLive==='function') pushLive();
 }
 function sessionAsText(){
   const L=[];
@@ -461,7 +690,7 @@ function sessionAsText(){
   return L.join('\n');
 }
 function load(){
-  try{ const raw = localStorage.getItem(LS_KEY); if(raw) state = JSON.parse(raw); }catch(e){ state=null; }
+  try{ const raw = localStorage.getItem(LS_KEY); if(raw){ state = JSON.parse(raw); if(state.screen!=='setup') normalizeState(state); } }catch(e){ state=null; }
 }
 /* ============================================================
    UI
@@ -474,77 +703,143 @@ const finishing = new Set();
 
 function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+/* tiny haptic tick on Android; skipped until the person has really tapped (browsers block it otherwise) */
+function buzz(){ try{ if(navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(8); }catch(e){} }
+function renderStatus(){
+  const el = document.getElementById('status'); if(!el) return;
+  if(IS_VIEWER || !state || state.screen!=='main'){ el.innerHTML=''; return; }
+  const n = state.players.filter(p=>p.status!=='out').length, c = state.courts.length;
+  el.innerHTML = `${live && live.on ? '<span class="live">● LIVE</span> · ' : ''}${n} players · ${c} court${c===1?'':'s'}`;
+}
 function render(){
-  if(IS_VIEWER){ if(!state) return; (state.mode==='open') ? renderOpenViewer() : renderViewer(); return; }
-  if(!state || state.screen==='setup'){ renderSetup(); return; }
-  if(state.screen==='summary'){ renderSummary(); return; }
+  if(IS_VIEWER){ if(state) renderViewer(); renderStatus(); return; }
+  if(!state || state.screen==='setup'){ renderSetup(); renderStatus(); return; }
+  if(state.screen==='summary'){ renderSummary(); renderStatus(); return; }
   $tabs.classList.remove('hidden');
-  document.getElementById('btnNewSession').classList.remove('hidden');
   $tabs.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
   if(ui.tab==='play') renderPlay();
   else if(ui.tab==='players') renderPlayers();
   else renderLog();
+  renderStatus();
+  bindChipTouch();
+}
+/* Hold-to-drag needs to stop the page scrolling once a card is lifted. That
+   listener can't be passive, so it lives only on the name cards: scrolling
+   that starts anywhere else stays fully passive and smooth. */
+function bindChipTouch(){
+  document.querySelectorAll('[data-chip]').forEach(el=>el.addEventListener('touchmove', stopScrollWhileLifted, {passive:false}));
 }
 
+/* FLIP: name cards glide from where they were to where they are now.
+   Composite-only (transform/opacity) via WAAPI so it stays smooth on phones. */
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const EASE_OUT = 'cubic-bezier(.23,1,.32,1)', EASE_IN_OUT = 'cubic-bezier(.77,0,.175,1)';
 function animatedRender(){
-  if(REDUCED){ render(); return; }
   const old = new Map();
   document.querySelectorAll('[data-chip]').forEach(el=>old.set(el.dataset.chip, el.getBoundingClientRect()));
   render();
+  if(!old.size) return;
   requestAnimationFrame(()=>{
+    let entering = 0;
     document.querySelectorAll('[data-chip]').forEach(el=>{
-      const prev = old.get(el.dataset.chip), now = el.getBoundingClientRect();
+      const prev = old.get(el.dataset.chip);
+      if(REDUCED){ // gentler, not nothing: new names fade in, nobody slides
+        if(!prev) el.animate([{opacity:0},{opacity:1}],{duration:150, easing:'ease'});
+        return;
+      }
       if(prev){
-        const dx = prev.left-now.left, dy = prev.top-now.top;
+        const now = el.getBoundingClientRect(), dx = prev.left-now.left, dy = prev.top-now.top;
         if(Math.abs(dx)>2 || Math.abs(dy)>2)
-          el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:300,easing:'cubic-bezier(.2,.8,.2,1)'});
+          el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:260, easing:EASE_IN_OUT});
       } else {
-        el.animate([{opacity:0, transform:'scale(.85)'},{opacity:1, transform:'none'}],{duration:220,easing:'ease-out'});
+        // a freshly filled court: the four names arrive 40ms apart instead of all at once
+        el.animate([{opacity:0, transform:'scale(.96)'},{opacity:1, transform:'none'}],
+          {duration:200, delay:Math.min(entering++, 4)*40, easing:EASE_OUT, fill:'backwards'});
       }
     });
   });
 }
 
+function stepperHtml(action, val, min, max){
+  return `<div class="stepper">
+    <button class="ibtn" data-action="${action}" data-d="-1" ${val<=min?'disabled':''} aria-label="One fewer">−</button>
+    <span class="val">${val}</span>
+    <button class="ibtn" data-action="${action}" data-d="1" ${val>=max?'disabled':''} aria-label="One more">＋</button></div>`;
+}
+
 /* ---------- setup screen ---------- */
 function renderSetup(){
   $tabs.classList.add('hidden');
-  document.getElementById('btnNewSession').classList.add('hidden');
+  const n = ui.setupNames.length;
+  ui.setupCourts = ui.setupCourts || 2;
   $app.innerHTML = `
     <div class="card">
-      <h2>Who's playing today?</h2>
-      <p class="subtle" style="margin:6px 0 12px">Add everyone in the group. You can add late arrivals any time.</p>
+      <h2 style="font-size:22px">Who's playing today?</h2>
+      <p class="subtle" style="margin:6px 0 12px">Add everyone now. Late arrivals can be added any time.</p>
       <div class="row">
-        <input class="grow" id="setupName" placeholder="Player name" autocomplete="off" enterkeyhint="done">
+        <input class="grow" id="setupName" placeholder="Player name" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done">
         <button class="btn primary" data-action="setup-add">Add</button>
       </div>
       <div class="plist">
-        ${ui.setupNames.map((n,i)=>`<span class="ptag"><b>${esc(n)}</b><span class="x" data-action="setup-remove" data-i="${i}">✕</span></span>`).join('')||'<span class="subtle">No players yet</span>'}
+        ${ui.setupNames.map((e,i)=>`<span class="ptag" data-action="setup-level" data-i="${i}"><b>${esc(e.n)}</b>${lvBadge(e.lv)}<span class="x" role="button" aria-label="Remove ${esc(e.n)}" data-action="setup-remove" data-i="${i}">✕</span></span>`).join('')}
       </div>
-      <label class="lbl">Courts available</label>
-      <input id="setupCourts" type="number" min="1" max="12" value="2" style="width:90px">
-      <div style="margin-top:18px">
-        <button class="btn primary" style="width:100%; padding:14px" data-action="setup-start">Start open play →</button>
-      </div>
-      <p class="hint">Need at least 4 players per court to fill it. Extra players wait in the paddle queue.</p>
+      ${n? '<p class="hint" style="margin-top:8px">Everyone starts as Novice. Tap a name to change: Novice → Intermediate → Advanced.</p>':''}
+      <div class="setrow" style="margin-top:8px"><b>Courts</b>${stepperHtml('setup-courts', ui.setupCourts, 1, 12)}</div>
+      <button class="btn primary big" style="width:100%; margin-top:12px" data-action="setup-start" ${n<4?'disabled':''}>Start open play${n? ` · ${n} players` : ''}</button>
+      <p class="hint">${n<4 ? `Add ${4-n} more player${4-n===1?'':'s'} to start.` : 'Anyone beyond 4 per court waits in the paddle queue.'}</p>
     </div>
     <div class="card">
       <div class="row" style="justify-content:space-between">
-        <span class="subtle">Have a backup file from a previous session?</span>
-        <button class="btn ghost small" data-action="restore">Restore .json</button>
+        <span class="subtle">Moving from another phone?</span>
+        <button class="btn ghost small" data-action="restore">Restore backup</button>
       </div>
       <input type="file" id="restoreFile" accept=".json,application/json" class="hidden">
     </div>`;
   const inp = document.getElementById('setupName');
   inp.addEventListener('keydown', e=>{ if(e.key==='Enter') doAction('setup-add'); });
-  inp.focus();
+}
+
+/* ---------- levels ---------- */
+const LV_ABBR = ['', 'Nov', 'Int', 'Adv'];
+function lvBadge(level, pid){
+  const l = level||0;
+  if(pid) return `<button class="lvb lv${l}" data-action="cycle-level" data-pid="${pid}" aria-label="Level: ${LEVELS[l]}, tap to change">${LEVELS[l]}</button>`;
+  return l ? `<span class="lvb lv${l}">${LEVELS[l]}</span>` : '';
+}
+/* one short line under a name on court: level · W–L · late */
+function chipSub(p){
+  if(!p) return '';
+  const l = p.level||0;
+  return `${l? `<span class="lvl lv${l}">${LV_ABBR[l]}</span> · ` : ''}${p.wins}–${p.losses}${p.late?' · ⏰':''}`;
 }
 
 /* ---------- play tab ---------- */
 function chipHtml(pid, extra=''){
   const p = byId(pid);
-  return `<div class="chip ${ui.selected===pid?'sel':''} ${extra}" data-chip="${pid}">
-    ${esc(p.name)}<small>${p.games}g · ${p.wins}W${p.late?' · ⏰':''}</small></div>`;
+  return `<div class="chip ${ui.selected===pid?'sel':''} ${extra}" data-chip="${pid}">${esc(p.name)}<small>${chipSub(p)}</small></div>`;
+}
+/* Who goes on the next court that frees up (same logic fillCourts uses).
+   With fewer than 4 waiting, everyone waiting is up next. */
+function nextUpIds(){
+  const pick = chooseFour();
+  return new Set(pick ? pick.players.map(p=>p.id) : queuedPlayers().map(p=>p.id));
+}
+/* Queue split into a highlighted "Up next" box and the rest */
+function queueSectionsHtml(rowHtml){
+  const q = prioritySort(queuedPlayers());
+  if(!q.length) return '<p class="subtle" style="padding:12px 4px 4px">Everyone is on court.</p>';
+  const nextUp = nextUpIds();
+  const up = q.filter(p=>nextUp.has(p.id)), rest = q.filter(p=>!nextUp.has(p.id));
+  const short = up.length<4 ? `<span class="subtle"> · ${up.length} of 4, the rest come off the next game</span>` : '';
+  return `<div class="upnext"><div class="label">Up next${short}</div>${up.map((p,i)=>rowHtml(p,i,true)).join('')}</div>`
+    + (rest.length ? `<div class="waitlabel">Waiting</div>${rest.map((p,i)=>rowHtml(p,up.length+i,false)).join('')}` : '');
+}
+function queueMeta(p){
+  const bits = [`${p.games} game${p.games===1?'':'s'}`];
+  if(p.wonLast) bits.push('won last');
+  if(p.late) bits.push('⏰ late');
+  if(p.partnerId) bits.push('🔗 '+esc(nameOf(p.partnerId)));
+  return bits.join(' · ');
 }
 function slotHtml(c, ti, pi){
   const id = c.teams[ti][pi];
@@ -556,8 +851,9 @@ function renderPlay(){
     let body='';
     if(c.phase==='idle'){
       const waiting = queuedPlayers().length;
-      body = `<div class="empty-court">Court open — ${waiting<4? `waiting for players (${waiting}/4 in queue)` : 'filling…'}</div>`;
+      body = `<div class="empty-court">Court open · ${waiting<4? `waiting for players (${waiting} of 4)` : 'filling…'}</div>`;
     } else {
+      const full = courtPlayers(c).length===4;
       body = `
         <div class="teams">
           <div class="team a" data-court="${c.id}" data-team="0"><div class="tname">Team A</div>${c.teams[0].map((id,pi)=>slotHtml(c,0,pi)).join('')}</div>
@@ -566,43 +862,59 @@ function renderPlay(){
         </div>
         <div class="actions">
           ${c.phase==='staging'
-            ? `<button class="btn" data-action="shuffle" data-court="${c.id}">🎲 Shuffle</button>
-               <button class="btn primary" data-action="start" data-court="${c.id}">Start match</button>`
+            ? (full ? `<button class="btn" data-action="swap-teams" data-court="${c.id}" aria-label="Swap teammates">⇄ Swap pairs</button>`
+                    : `<button class="btn" data-action="shuffle" data-court="${c.id}">🎲 Fill from queue</button>`)
+              + `<button class="btn primary" data-action="start" data-court="${c.id}" ${full?'':'disabled'}>Start match</button>`
             : `<button class="btn primary" data-action="finish" data-court="${c.id}">🏁 Finish match</button>`}
-        </div>`;
+        </div>
+        ${c.phase==='staging' ? '<p class="tip">Tap two names to swap · hold a name to drag it</p>' : ''}`;
     }
-    const badge = c.phase==='playing' ? `<span class="badge play">● playing <span class="timer" data-start="${c.startedAt}">0:00</span></span>`
+    const badge = c.phase==='playing' ? `<span class="badge play">● <span class="timer" data-start="${c.startedAt}">0:00</span></span>`
                 : c.phase==='staging' ? `<span class="badge stage">setting teams</span>`
                 : `<span class="badge">open</span>`;
     return `<div class="court"><div class="head"><b>Court ${c.id}</b>${badge}</div><div class="body">${body}</div></div>`;
   }).join('');
 
-  const q = prioritySort(queuedPlayers());
+  const waitingCount = queuedPlayers().length;
   const onBreak = state.players.filter(p=>p.status==='break');
-  const queueHtml = q.map((p,i)=>`
-    <div class="qitem ${i<4?'next':''}">
+  const queueHtml = queueSectionsHtml((p,i,isNext)=>`
+    <div class="qitem ${isNext?'next':''}">
       <span class="qpos">${i+1}</span>
-      <span class="qname" data-chip="${p.id}"><span class="qgrab">⠿</span> ${esc(p.name)}
-        <span class="meta"> · ${p.games} game${p.games===1?'':'s'}${p.wonLast?' · won last':''}${p.late?' · ⏰ late':''}${p.partnerId?' · 🔗 '+esc(nameOf(p.partnerId)):''}${p.pin!=null?' · 📌':''}</span></span>
-      ${p.wonLast?'<span class="tag w">W</span>':''}
-      <button class="btn ghost small" data-action="partner" data-pid="${p.id}">🔗</button>
-      <button class="btn ghost small" data-action="break" data-pid="${p.id}">💤</button>
-    </div>`).join('') || '<p class="subtle" style="padding:8px 4px">Queue is empty — everyone is on court.</p>';
+      <div class="qmain" data-chip="${p.id}">
+        <div class="qline"><b>${esc(p.name)}</b>${lvBadge(p.level)}${p.pin!=null?'<span class="tag" title="Placed by hand">📌</span>':''}</div>
+        <div class="meta">${queueMeta(p)}</div>
+      </div>
+      <button class="ibtn ${p.partnerId?'on':''}" data-action="partner" data-pid="${p.id}" aria-label="Fixed partner for ${esc(p.name)}">🔗</button>
+      <button class="ibtn" data-action="break" data-pid="${p.id}" aria-label="${esc(p.name)} takes a break">💤</button>
+    </div>`);
   const breakHtml = onBreak.map(p=>`
     <div class="qitem"><span class="qpos">💤</span>
-      <span class="qname">${esc(p.name)}<span class="meta"> · ${p.games} game${p.games===1?'':'s'}</span></span>
-      <button class="btn ghost small" data-action="partner" data-pid="${p.id}">🔗</button>
-      <button class="btn small primary" data-action="break" data-pid="${p.id}">I'm back</button>
+      <div class="qmain"><div class="qline"><b>${esc(p.name)}</b></div><div class="meta">${p.games} game${p.games===1?'':'s'}</div></div>
+      <button class="btn primary" data-action="break" data-pid="${p.id}">I'm back</button>
     </div>`).join('');
 
   $app.innerHTML = courtsHtml + `
     <div class="card" id="queueCard">
-      <h3 style="margin-bottom:6px">🏓 Paddle queue</h3>
-      <p class="subtle">Fewest games first · recent winners get the tiebreak · then longest wait.</p>
+      <div class="row" style="justify-content:space-between"><h3>🏓 Paddle queue</h3><span class="subtle">${waitingCount} waiting</span></div>
       ${queueHtml}
-      ${breakHtml? `<h3 style="margin:14px 0 4px; font-size:14px; color:var(--dim)">On break</h3>${breakHtml}`:''}
-      <p class="hint">💡 Every name card drags: drop a queued player onto a team to put them in, drag a court player anywhere off the court to bench them (their slot stays open; 🎲 Shuffle fills open slots from the queue), or reorder the queue by dropping a card onto another spot (📌 = manually placed; clears when they play). Tap-tap works too. Tap 🔗 on a queue card to set a fixed partner, 💤 for a break. 🎲 Shuffle keeps 🔗 partners together.</p>
+      ${breakHtml? `<div class="waitlabel">On break</div>${breakHtml}`:''}
+      <div class="quickadd">
+        <input id="quickName" placeholder="Add a late arrival" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done">
+        <button class="btn primary" data-action="add-player" data-input="quickName">Add</button>
+      </div>
+      <details class="help" ${ui.helpOpen?'open':''}>
+        <summary>How the queue works</summary>
+        <ul>
+          <li>Fewest games plays next, then whoever has waited longest. Late arrivals go on the next court.</li>
+          <li>${levelMatchOn()? 'Similar levels are grouped when it\'s fair. ' : ''}Teams are balanced by level and wins, and partners rotate.</li>
+          <li><b>Swap:</b> tap a name, then tap another one (on court or in the queue).</li>
+          <li><b>Move:</b> hold a name, then drag it onto a team, an open slot, or another queue spot (📌 = placed by hand). Drag a court player off the court to bench them.</li>
+          <li>🔗 sets a fixed partner (they always play together). 💤 takes a break.</li>
+        </ul>
+      </details>
     </div>`;
+  document.getElementById('quickName').addEventListener('keydown', e=>{ if(e.key==='Enter') doAction('add-player', e.target.nextElementSibling); });
+  document.querySelector('details.help').addEventListener('toggle', e=>{ ui.helpOpen = e.target.open; });
 }
 
 /* ---------- players tab ---------- */
@@ -610,102 +922,100 @@ function renderPlayers(){
   const active = state.players.filter(p=>p.status!=='out');
   const rows = active.slice().sort((a,b)=>b.games-a.games || b.wins-a.wins).map(p=>{
     const last = (p.history||[])[0];
-    return `<tr>
-      <td><b>${esc(p.name)}</b>${p.late?' <span class="tag zz">⏰ late</span>':''}<br><span class="subtle" style="font-size:11.5px">${p.partnerId? '🔗 '+esc(nameOf(p.partnerId))+' · ':''}${last? `last with ${esc(last.teammate)}${last.score? ' · '+last.score : ''}` : '—'}</span></td>
-      <td>${p.games}</td>
-      <td>${p.wins}–${p.losses}</td>
-      <td><span class="st ${p.status}">${p.status}</span></td>
-      <td style="text-align:right; white-space:nowrap">
-        <button class="btn ghost small" data-action="partner" data-pid="${p.id}">🔗</button>
-        ${p.status!=='playing' ? `<button class="btn ghost small" data-action="break" data-pid="${p.id}">${p.status==='break'?'▶':'💤'}</button>
-        <button class="btn danger small" data-action="remove" data-pid="${p.id}">✕</button>`:''}
-      </td></tr>`;
+    const bits = [`${p.games} game${p.games===1?'':'s'}`, `${p.wins}–${p.losses}`];
+    if(p.partnerId) bits.push('🔗 '+esc(nameOf(p.partnerId)));
+    if(last) bits.push(`last with ${esc(last.teammate)}`);
+    return `<div class="prow">
+      <div class="top">
+        <div class="who"><b>${esc(p.name)}</b>${p.late?' <span class="tag zz">⏰ late</span>':''}</div>
+        ${lvBadge(p.level, p.id)}
+      </div>
+      <div class="bot">
+        <div class="who meta"><span class="st ${p.status}">${p.status==='break'?'on break':p.status}</span> ${bits.join(' · ')}</div>
+        <div class="acts">
+          <button class="ibtn ${p.partnerId?'on':''}" data-action="partner" data-pid="${p.id}" aria-label="Fixed partner">🔗</button>
+          ${p.status!=='playing' ? `<button class="ibtn" data-action="break" data-pid="${p.id}" aria-label="${p.status==='break'?'Back from break':'Take a break'}">${p.status==='break'?'▶':'💤'}</button>
+          <button class="ibtn danger" data-action="remove" data-pid="${p.id}" aria-label="Remove from session">✕</button>`:''}
+        </div>
+      </div>
+    </div>`;
   }).join('');
   const gone = state.players.filter(p=>p.status==='out');
   $app.innerHTML = `
     <div class="card">
       <h3>Add a player</h3>
       <div class="row" style="margin-top:10px">
-        <input class="grow" id="addName" placeholder="Late arrival's name" autocomplete="off">
-        <button class="btn primary" data-action="add-player">Add</button>
+        <input class="grow" id="addName" placeholder="Late arrival's name" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done">
+        <button class="btn primary" data-action="add-player" data-input="addName">Add</button>
       </div>
-      <p class="hint">Late joiners drop into the back of the rotation — no catch-up priority. They carry a ⏰ tag so their lower game count makes sense in the logs.</p>
+      <p class="hint">Late arrivals go on the next court that opens up. Everyone starts as Novice; tap a level below to change it.</p>
     </div>
     <div class="card">
-      <h3 style="margin-bottom:10px">Players</h3>
-      <table>
-        <tr><th>Name</th><th>Games</th><th>W–L</th><th>Status</th><th></th></tr>
-        ${rows}
-      </table>
+      <h3>Players <span class="subtle">· ${active.length}</span></h3>
+      ${rows}
       ${gone.length? `<p class="subtle" style="margin-top:10px">Left: ${gone.map(p=>esc(p.name)+` (${p.wins}–${p.losses})`).join(', ')}</p>`:''}
     </div>
     <div class="card">
-      <h3>Courts</h3>
-      <div class="row" style="margin-top:10px">
-        <input id="courtCount" type="number" min="1" max="12" value="${state.courts.length}" style="width:80px">
-        <button class="btn" data-action="set-courts">Update</button>
-      </div>
-      <p class="hint">Adding a court fills it from the queue right away. Removing only takes away open courts.</p>
+      <div class="setrow"><h3>Courts</h3>${stepperHtml('set-courts', state.courts.length, 1, 12)}</div>
+      <p class="hint" style="margin-top:4px">A new court fills from the queue right away. Only open courts can be removed.</p>
+    </div>
+    <div class="card">
+      <button class="btn toggle ${levelMatchOn()?'on':''}" data-action="toggle-levelmatch" role="switch" aria-checked="${levelMatchOn()}">
+        <span><b>Group players by level</b><br><span class="subtle">Prefer similar levels on the same court, but never at the cost of someone who's waited longer. Teams are always balanced either way.</span></span>
+        <span class="sw"></span>
+      </button>
     </div>`;
-  document.getElementById('addName').addEventListener('keydown', e=>{ if(e.key==='Enter') doAction('add-player'); });
+  document.getElementById('addName').addEventListener('keydown', e=>{ if(e.key==='Enter') doAction('add-player', e.target.nextElementSibling); });
 }
 
-/* ---------- log tab ---------- */
+/* ---------- session tab ---------- */
 function renderLog(){
-  const items = matchListHtml() || '<p class="subtle">No matches finished yet.</p>';
+  const items = matchListHtml() || '<p class="subtle" style="margin-top:8px">No matches finished yet.</p>';
   $app.innerHTML = `
     <div class="card">
       <div class="row" style="justify-content:space-between">
         <h3>Match log</h3>
-        ${state.undoStack.length? '<button class="btn ghost small" data-action="undo">↩ Undo last result</button>':''}
+        ${state.undoStack.length? '<button class="btn ghost small" data-action="undo">↩ Undo last</button>':''}
       </div>
-      <div style="margin-top:8px">${items}</div>
-    </div>
-    <div class="card">
-      <h3>Backups</h3>
-      <p class="subtle" style="margin:6px 0 10px">The session auto-saves in this browser. Export a backup if you want a copy or need to move to another phone.</p>
-      <div class="row">
-        <button class="btn grow" data-action="export-json">💾 Backup (.json)</button>
-        <button class="btn grow" data-action="export-txt">📄 Log (.txt)</button>
-      </div>
-      <p class="hint">Restore a .json backup from the start screen (New session → Restore).</p>
+      <div style="margin-top:4px">${items}</div>
     </div>
     <div class="card">
       <h3>📡 Live sharing</h3>
       ${live && live.on ? `
-        <p class="subtle" style="margin:6px 0 10px">Sharing live — players can ${live.mode==='open'?'watch <b>and edit</b>':'watch'} the queue, courts and standings at your link.</p>
-        <div class="row">
-          <button class="btn grow" data-action="live-mode" data-mode="locked" ${live.mode!=='open'?'style="border:1px solid var(--accent); color:var(--accent)"':''}>🔒 View only</button>
-          <button class="btn grow" data-action="live-mode" data-mode="open" ${live.mode==='open'?'style="border:1px solid var(--accent); color:var(--accent)"':''}>✏️ Open editing</button>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <button class="btn primary grow" data-action="live-qr">🔳 Show QR code</button>
-        </div>
+        <p class="subtle" style="margin:6px 0 10px">Players can watch the courts, queue and standings at your link. Only this phone can make changes.</p>
+        <button class="btn primary big" style="width:100%" data-action="live-qr">🔳 Show QR code</button>
         <div class="row" style="margin-top:8px">
           <button class="btn grow" data-action="live-share">📤 Share link</button>
           <button class="btn grow" data-action="live-copy">📋 Copy</button>
         </div>
-        <div class="row" style="margin-top:8px"><button class="btn danger grow" data-action="live-stop">Stop sharing</button></div>
-        ${live.mode==='open'?'<p class="hint">Open editing: anyone with the link can move players, set teams, start and finish matches — every change syncs to everyone.</p>':''}`
+        <button class="btn danger" style="width:100%; margin-top:8px" data-action="live-stop">Stop sharing</button>`
       : live && live.dbUrl ? `
-        <p class="subtle" style="margin:6px 0 10px">Ready to go live using your saved database.</p>
-        <button class="btn primary" style="width:100%" data-action="live-start">🔴 Go live</button>`
+        <p class="subtle" style="margin:6px 0 10px">Let everyone follow along on their own phone.</p>
+        <button class="btn primary big" style="width:100%" data-action="live-start">🔴 Go live</button>`
       : `
         <p class="subtle" style="margin:6px 0 10px">One-time setup: paste your Firebase Realtime Database URL.</p>
-        <input id="dbUrl" style="width:100%" placeholder="https://your-db-default-rtdb.firebaseio.com">
-        <div class="row" style="margin-top:8px"><button class="btn primary grow" data-action="live-setup">Save & go live</button></div>
+        <input id="dbUrl" style="width:100%" inputmode="url" autocomplete="off" placeholder="https://your-db-default-rtdb.firebaseio.com">
+        <button class="btn primary" style="width:100%; margin-top:8px" data-action="live-setup">Save &amp; go live</button>
         <p class="hint">Free at console.firebase.google.com → Create project → Build → Realtime Database → Create database (test mode) → copy the URL shown in the Data tab.</p>`}
     </div>
     <div class="card">
       <h3>Finish session</h3>
-      <p class="subtle" style="margin:6px 0 10px">Wraps up the day and builds a summary to send to the group.</p>
+      <p class="subtle" style="margin:6px 0 10px">Wraps up the day with final standings to send to the group. You can resume afterwards.</p>
       <button class="holdbtn" id="holdFinish"><div class="fill"></div><span class="txt">✋ Hold to finish session</span></button>
-      <p class="hint">Press and hold for a moment — a quick tap won't trigger it. You can still resume afterwards.</p>
-    </div>`;
+    </div>
+    <div class="card">
+      <h3>Backups</h3>
+      <p class="subtle" style="margin:6px 0 10px">The session saves itself on this phone. Export a copy to keep it or move to another phone.</p>
+      <div class="row">
+        <button class="btn grow" data-action="export-json">💾 Backup</button>
+        <button class="btn grow" data-action="export-txt">📄 Text log</button>
+      </div>
+    </div>
+    <button class="btn danger" style="width:100%; margin-bottom:12px" data-action="new-session">Start a new session</button>`;
   const hb = document.getElementById('holdFinish');
   let holdT = null;
   const disarm = ()=>{ hb.classList.remove('arming'); clearTimeout(holdT); };
-  hb.addEventListener('pointerdown', e=>{ e.preventDefault(); hb.classList.add('arming'); holdT = setTimeout(()=>doAction('finish-session'), 1200); });
+  hb.addEventListener('pointerdown', e=>{ e.preventDefault(); hb.classList.add('arming'); buzz(); holdT = setTimeout(()=>doAction('finish-session'), 1200); });
   ['pointerup','pointerleave','pointercancel'].forEach(ev=>hb.addEventListener(ev, disarm));
 }
 
@@ -740,58 +1050,41 @@ function liveSave(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify(live)); 
 function liveUrl(){ return live.dbUrl.replace(/\/$/,'')+'/sessions/'+live.id+'.json'; }
 function liveLink(){ return location.origin+location.pathname+'#live='+live.id+'&db='+encodeURIComponent(live.dbUrl.replace(/\/$/,'')); }
 let pushT = null;
-const clientId = Math.random().toString(36).slice(2,10);
+/* Only the host edits; viewers just watch. The host's state.rev is bumped in
+   save(), so every push carries a strictly newer version than the last. */
 function pushLive(){
-  if(!live || !live.on || !live.id || !state || state.screen==='setup') return;
+  if(IS_VIEWER || !live || !live.on || !live.id || !state || state.screen==='setup') return;
   clearTimeout(pushT);
   pushT = setTimeout(()=>{
-    state.rev = (state.rev||0)+1;
-    const payload = {...state, undoStack:[], t:Date.now(), src:clientId,
-      mode: IS_VIEWER ? (state.mode||'locked') : (live.mode||'locked')};
+    const payload = {...state, undoStack:[], t:Date.now()};
     fetch(liveUrl(), {method:'PUT', body: JSON.stringify(payload)}).catch(()=>{});
   }, 400);
 }
 function normalizeState(s){
   s.players = s.players||[]; s.courts = s.courts||[]; s.matches = s.matches||[]; s.undoStack = s.undoStack||[];
-  s.players.forEach(p=>{ p.history = p.history||[]; });
+  s.settings = s.settings||{ levelMatch:true };
+  s.players.forEach(p=>{
+    p.history = p.history||[];
+    p.level = p.level||1; // untagged → Novice
+    if(p.pin!=null && typeof p.pin!=='object') p.pin = null; // old numeric pins
+  });
   s.courts.forEach(c=>{ if(c.teams && (!c.teams[0] || !c.teams[1])) c.teams = null; });
   return s;
 }
-function adoptRemote(data){
-  if(!data || data.src===clientId) return;
-  if((data.rev||0) <= ((state && state.rev)||0)) return;
-  adopting = true;
-  state = normalizeState(data);
-  viewerLastT = data.t||Date.now();
-  if(!IS_VIEWER){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }
-  render();
-  adopting = false;
-}
-let hostES = null;
-function hostSubscribe(){
-  if(hostES || !live || !live.on || IS_VIEWER) return;
-  try{
-    hostES = new EventSource(liveUrl());
-    hostES.addEventListener('put', e=>{
-      try{ const d = JSON.parse(e.data); if(d.path==='/' && d.data) adoptRemote(d.data); }catch(err){}
-    });
-  }catch(e){}
-}
-function hostUnsubscribe(){ if(hostES){ hostES.close(); hostES = null; } }
 /* viewer */
 let viewerLastT = 0;
 function startViewer(db, id){
   IS_VIEWER = true;
   live = { dbUrl: db.replace(/\/$/,''), id: id, on: true };
   state = null;
-  document.getElementById('btnNewSession').classList.add('hidden');
   $tabs.classList.add('hidden');
   $app.innerHTML = '<div class="card"><p class="subtle">Connecting to live session…</p></div>';
   const url = liveUrl();
   const apply = data => {
     if(!data){ state = null; $app.innerHTML='<div class="card"><p class="subtle">This live session has ended. Ask the organizer for the new link or QR code.</p></div>'; return; }
-    if(!state){ state = normalizeState(data); viewerLastT = data.t||Date.now(); render(); }
-    else adoptRemote(data);
+    // a new host session (or a host that started over) may restart its version count
+    if(state && data.sid===state.sid && (data.rev||0) <= (state.rev||0)) return;
+    state = normalizeState(data); viewerLastT = data.t||Date.now(); render();
   };
   const poll = ()=>{ fetch(url).then(r=>r.json()).then(apply).catch(()=>{}); };
   let pollT = null;
@@ -803,27 +1096,10 @@ function startViewer(db, id){
   }catch(e){ pollT = setInterval(poll, 5000); }
   poll();
 }
-function renderOpenViewer(){
-  $tabs.classList.add('hidden');
-  document.getElementById('btnNewSession').classList.add('hidden');
-  ui.tab = 'play';
-  renderPlay();
-  const rank = rankedPlayers(), medals=['🥇','🥈','🥉'];
-  const standings = rank.map((p,i)=>`<tr><td style="width:36px">${medals[i]||(i+1)+'.'}</td><td><b>${esc(p.name)}</b>${p.late?' <span class="tag zz">⏰</span>':''}</td><td>${p.wins}–${p.losses}</td><td class="subtle">${p.games} games</td></tr>`).join('');
-  $app.insertAdjacentHTML('beforeend', `
-    <div class="card"><h3 style="margin-bottom:8px">Standings</h3>${standings? `<table>${standings}</table>` : '<p class="subtle">No games finished yet.</p>'}</div>
-    <div class="card"><h3 style="margin-bottom:8px">Match history</h3>${matchListHtml()||'<p class="subtle">No matches yet.</p>'}</div>`);
-  const u = new Date(viewerLastT);
-  $app.insertAdjacentHTML('afterbegin', `
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px">
-      <b style="color:var(--accent)">● LIVE · you can edit</b>
-      <span class="subtle">synced ${u.getHours()%12||12}:${String(u.getMinutes()).padStart(2,'0')}</span>
-    </div>`);
-}
 function vchip(pid){
   if(!pid) return '<div class="chip vacant"><small>open slot</small></div>';
   const p = byId(pid);
-  return `<div class="chip" style="touch-action:auto">${esc(p?p.name:'?')}<small>${p? p.games+'g · '+p.wins+'W' : ''}${p&&p.late?' · ⏰':''}</small></div>`;
+  return `<div class="chip">${esc(p?p.name:'?')}<small>${chipSub(p)}</small></div>`;
 }
 function renderViewer(){
   if(!state || !state.players) return;
@@ -838,11 +1114,10 @@ function renderViewer(){
                 : c.phase==='staging' ? '<span class="badge stage">setting teams</span>' : '<span class="badge">open</span>';
     return `<div class="court"><div class="head"><b>Court ${c.id}</b>${badge}</div><div class="body">${body}</div></div>`;
   }).join('');
-  const q = prioritySort(queuedPlayers());
-  const queueHtml = q.map((p,i)=>`
-    <div class="qitem ${i<4?'next':''}"><span class="qpos">${i+1}</span>
-      <span class="qname">${esc(p.name)}<span class="meta"> · ${p.games} game${p.games===1?'':'s'}${p.wonLast?' · won last':''}${p.late?' · ⏰ late':''}${p.partnerId?' · 🔗 '+esc(nameOf(p.partnerId)):''}${p.pin!=null?' · 📌':''}</span></span>
-    </div>`).join('') || '<p class="subtle" style="padding:8px 4px">Queue is empty — everyone is on court.</p>';
+  const queueHtml = queueSectionsHtml((p,i,isNext)=>`
+    <div class="qitem ${isNext?'next':''}"><span class="qpos">${i+1}</span>
+      <div class="qmain"><div class="qline"><b>${esc(p.name)}</b>${lvBadge(p.level)}</div><div class="meta">${queueMeta(p)}</div></div>
+    </div>`);
   const rank = rankedPlayers(), medals=['🥇','🥈','🥉'];
   const standings = rank.map((p,i)=>`<tr><td style="width:36px">${medals[i]||(i+1)+'.'}</td><td><b>${esc(p.name)}</b>${p.late?' <span class="tag zz">⏰</span>':''}</td><td>${p.wins}–${p.losses}</td><td class="subtle">${p.games} games</td></tr>`).join('');
   const u = new Date(viewerLastT);
@@ -883,7 +1158,6 @@ function shareText(){
 }
 function renderSummary(){
   $tabs.classList.add('hidden');
-  document.getElementById('btnNewSession').classList.add('hidden');
   const rank = rankedPlayers(), medals=['🥇','🥈','🥉'];
   const rows = rank.map((p,i)=>`<tr><td style="width:36px; font-size:16px">${medals[i]||(i+1)+'.'}</td><td><b>${esc(p.name)}</b>${p.late?' <span class="tag zz">⏰ late</span>':''}</td><td>${p.wins}–${p.losses}</td><td class="subtle">${p.games} games</td></tr>`).join('');
   const d = new Date(state.startedAt||Date.now());
@@ -941,7 +1215,7 @@ function openQrModal(){
   $modalHost.innerHTML = `
     <div class="overlay" data-action="modal-bg">
       <div class="modal" style="text-align:center">
-        <h3>Scan to ${live.mode==='open'?'watch & edit':'watch live'}</h3>
+        <h3>Scan to watch live</h3>
         <p class="subtle" style="margin:6px 0 12px">Point a phone camera here — the live session opens right in their browser.</p>
         <div id="qrBox" style="background:#fff; border-radius:12px; padding:14px; display:inline-flex; align-items:center; justify-content:center; min-width:248px; min-height:248px"><span style="color:#888; font-size:13px">Generating…</span></div>
         <div class="row" style="margin-top:14px">
@@ -966,33 +1240,54 @@ function openFinishModal(courtId){
   const an = c.teams[0].filter(Boolean).map(nameOf).join(' & '), bn = c.teams[1].filter(Boolean).map(nameOf).join(' & ');
   $modalHost.innerHTML = `
     <div class="overlay" data-action="modal-bg">
-      <div class="modal">
-        <h3>Court ${c.id} — who won?</h3>
-        <p class="subtle">Scores are optional.</p>
-        <div class="scorerow">
-          <input id="sa" type="number" inputmode="numeric" placeholder="—" min="0" style="border-color:rgba(95,212,245,.5)">
-          <span class="subtle">to</span>
-          <input id="sb" type="number" inputmode="numeric" placeholder="—" min="0" style="border-color:rgba(255,184,92,.5)">
+      <div class="modal" role="dialog" aria-label="Who won on court ${c.id}">
+        <h3>Court ${c.id}: who won?</h3>
+        <p class="subtle">Tap the winners. Scores are optional; if you enter both, the higher score wins.</p>
+        <div class="fteams">
+          <div class="fteam a" id="ftA">
+            <div class="names">${esc(an)}</div>
+            <input id="sa" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="score" min="0" aria-label="Team A score">
+            <button class="btn" data-action="win" data-court="${c.id}" data-w="0">🏆 Won</button>
+          </div>
+          <div class="fteam b" id="ftB">
+            <div class="names">${esc(bn)}</div>
+            <input id="sb" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="score" min="0" aria-label="Team B score">
+            <button class="btn" data-action="win" data-court="${c.id}" data-w="1">🏆 Won</button>
+          </div>
         </div>
-        <div class="winbtns">
-          <button class="btn wa" data-action="win" data-court="${c.id}" data-w="0">🏆 ${esc(an)}</button>
-          <button class="btn wb" data-action="win" data-court="${c.id}" data-w="1">🏆 ${esc(bn)}</button>
-        </div>
-        <div style="margin-top:12px; text-align:center">
-          <button class="btn ghost small" data-action="modal-close">Cancel</button>
-        </div>
+        <button class="btn ghost" style="width:100%" data-action="modal-close">Cancel</button>
       </div>
     </div>`;
+  // as scores are typed, highlight the leading team so the winner tap matches the score
+  const sa = document.getElementById('sa'), sb = document.getElementById('sb');
+  const A = document.getElementById('ftA'), B = document.getElementById('ftB');
+  const sync = ()=>{
+    const x = sa.value, y = sb.value, both = x!=='' && y!=='' && +x!==+y;
+    A.classList.toggle('lead', both && +x>+y); B.classList.toggle('lead', both && +y>+x);
+    A.classList.toggle('trail', both && +x<+y); B.classList.toggle('trail', both && +y<+x);
+  };
+  sa.addEventListener('input', sync); sb.addEventListener('input', sync);
 }
-function closeModal(){ $modalHost.innerHTML=''; }
+function closeModal(){
+  const ov = $modalHost.firstElementChild;
+  if(!ov || REDUCED){ $modalHost.innerHTML=''; return; }
+  ov.classList.add('closing'); // quick slide-down, then remove
+  setTimeout(()=>{ if(ov.parentNode===$modalHost) ov.remove(); }, 180);
+}
 
 /* ---------- toast ---------- */
 let toastTimer=null;
 function toast(msg){
   const h = document.getElementById('toastHost');
-  h.innerHTML = `<div class="toast">${esc(msg)}</div>`;
+  let t = h.firstElementChild;
+  if(!t){
+    t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status');
+    h.appendChild(t); void t.offsetWidth; // start from the hidden state so it transitions in
+  }
+  t.textContent = msg; // one persistent toast: a new message retargets, it never restarts
+  t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>h.innerHTML='', 2200);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
 /* ---------- actions ---------- */
@@ -1001,19 +1296,34 @@ function doAction(action, el){
     case 'setup-add': {
       const inp = document.getElementById('setupName');
       const n = inp.value.trim();
-      if(n){ if(ui.setupNames.some(x=>x.toLowerCase()===n.toLowerCase())){ toast('Name already added'); } else ui.setupNames.push(n); }
+      if(n){ if(ui.setupNames.some(x=>x.n.toLowerCase()===n.toLowerCase())){ toast('Name already added'); } else ui.setupNames.push({n, lv:1}); }
       renderSetup(); const i2=document.getElementById('setupName'); i2.focus();
       return;
     }
     case 'setup-remove': ui.setupNames.splice(+el.dataset.i,1); renderSetup(); return;
-    case 'setup-start': {
-      const courts = +(document.getElementById('setupCourts').value)||1;
-      if(ui.setupNames.length<4){ toast('Need at least 4 players'); return; }
-      state = freshState(ui.setupNames, courts);
-      fillCourts(); save(); render(); return;
+    case 'setup-level': { const e = ui.setupNames[+el.dataset.i]; if(e){ e.lv = (e.lv%3)+1; renderSetup(); } return; }
+    case 'cycle-level': {
+      const p = byId(el.dataset.pid); if(!p) return;
+      p.level = ((p.level||1)%3)+1; save(); render(); return;
     }
+    case 'toggle-levelmatch':
+      state.settings = state.settings||{};
+      state.settings.levelMatch = !levelMatchOn(); save(); render();
+      toast(levelMatchOn() ? 'Grouping by level' : 'Ignoring levels'); return;
+    case 'setup-start': {
+      if(ui.setupNames.length<4){ toast('Need at least 4 players'); return; }
+      state = freshState(ui.setupNames, ui.setupCourts||2);
+      fillCourts(); save(); window.scrollTo(0,0); render(); return;
+    }
+    case 'setup-courts':
+      ui.setupCourts = Math.max(1, Math.min(12, (ui.setupCourts||2) + (+el.dataset.d)));
+      renderSetup(); return;
     case 'tab': ui.tab = el.dataset.tab; ui.selected=null; render(); return;
     case 'shuffle': shuffleTeams(+el.dataset.court); save(); animatedRender(); return;
+    case 'swap-teams':
+      if(swapTeammates(+el.dataset.court)){ save(); animatedRender(); }
+      else toast('🔗 Fixed partners stay together');
+      return;
     case 'start':
       if(startMatch(+el.dataset.court)){ save(); render(); }
       else toast('Fill all 4 slots first');
@@ -1030,11 +1340,15 @@ function doAction(action, el){
       const sa = document.getElementById('sa').value, sb = document.getElementById('sb').value;
       const cid = +el.dataset.court, w = +el.dataset.w;
       const SA = sa===''?null:+sa, SB = sb===''?null:+sb;
+      if(SA!=null && SB!=null){
+        if(SA===SB){ toast('Scores are tied. Fix the score or clear it.'); return; }
+        if((SA>SB ? 0 : 1)!==w){ toast("That score says the other team won. Check the score."); return; }
+      }
       closeModal();
       finishing.add(cid);
       const teamEl = document.querySelector(`.team[data-court="${cid}"][data-team="${w}"]`);
       const go = ()=>{ finishMatch(cid, w, SA, SB); finishing.delete(cid); save(); animatedRender(); };
-      if(teamEl){ teamEl.classList.add('winflash'); setTimeout(go, 500); } else go();
+      if(teamEl && !REDUCED){ teamEl.classList.add('winflash'); setTimeout(go, 300); } else go();
       return;
     }
     case 'modal-bg': if(event && event.target===el) closeModal(); return;
@@ -1056,12 +1370,20 @@ function doAction(action, el){
       return;
     }
     case 'add-player': {
-      const inp = document.getElementById('addName'); const n = inp.value.trim();
-      if(!n) return;
+      const inputId = (el && el.dataset.input) || 'addName';
+      const inp = document.getElementById(inputId); const n = inp.value.trim();
+      if(!n){ inp.focus(); return; }
       if(state.players.some(x=>x.status!=='out' && x.name.toLowerCase()===n.toLowerCase())){ toast('Name already in session'); return; }
-      addPlayer(n); save(); animatedRender(); toast(`${n} added to the queue`); return;
+      const np = addPlayer(n); save(); animatedRender(); toast(np.late ? `${n} added · on the next court` : `${n} added to the queue`);
+      const again = document.getElementById(inputId); if(again) again.focus(); // keep the keyboard up for the next name
+      return;
     }
-    case 'set-courts': setCourtCount(+(document.getElementById('courtCount').value)); save(); animatedRender(); return;
+    case 'set-courts': {
+      const want = Math.max(1, Math.min(12, state.courts.length + (+el.dataset.d)));
+      setCourtCount(want); save(); animatedRender();
+      if(state.courts.length>want) toast('Courts with players on them were kept');
+      return;
+    }
     case 'undo': if(undo()){ save(); animatedRender(); toast('Last result undone'); } return;
     case 'export-json':
       download('salitan-session-'+stamp()+'.json', JSON.stringify({...state, undoStack:[]}, null, 1), 'application/json');
@@ -1078,7 +1400,8 @@ function doAction(action, el){
           try{
             const s = JSON.parse(r.result);
             if(!s || !Array.isArray(s.players) || !Array.isArray(s.courts)) throw 0;
-            s.undoStack = s.undoStack||[];
+            normalizeState(s);
+            s.rev = Math.max(s.rev||0, (state && state.rev)||0); // keep live viewers in step
             state = s; save(); render(); toast('Session restored');
           }catch(e){ toast('Not a valid backup file'); }
         };
@@ -1095,15 +1418,10 @@ function doAction(action, el){
       if(!live || !live.dbUrl) return;
       if(!state.sid) state.sid = Math.random().toString(36).slice(2,10); // older saved sessions
       live.id = state.sid;
-      if(!live.mode) live.mode = 'locked';
-      live.on = true; liveSave(); pushLive(); hostSubscribe(); render(); toast('You are live — share the link'); return;
+      live.on = true; liveSave(); pushLive(); render(); toast('You are live — share the link'); return;
     case 'live-stop':
-      hostUnsubscribe();
       if(live){ fetch(liveUrl(), {method:'DELETE'}).catch(()=>{}); live.on = false; live.id = null; liveSave(); }
       render(); toast('Live sharing stopped'); return;
-    case 'live-mode':
-      live.mode = el.dataset.mode; liveSave(); pushLive(); render();
-      toast(live.mode==='open' ? 'Anyone with the link can now edit' : 'Link is now view-only'); return;
     case 'live-qr': openQrModal(); return;
     case 'live-share': {
       const url = liveLink();
@@ -1127,7 +1445,6 @@ function doAction(action, el){
       return;
     case 'new-session': {
       if(confirm('Start a fresh session? Current players, queue and match log will be cleared, and any shared live links will stop working.')){
-        hostUnsubscribe();
         if(live && live.id){ fetch(liveUrl(), {method:'DELETE'}).catch(()=>{}); }
         if(live){ live.on=false; live.id=null; liveSave(); }
         localStorage.removeItem(LS_KEY); state=null; ui.setupNames=[]; ui.selected=null; ui.tab='play'; render();
@@ -1155,12 +1472,37 @@ function trySwap(aId, bId){
   if(swapPlayers(aId,bId)){ ui.selected=null; save(); animatedRender(); toast(`Swapped ${A.name} ↔ ${B.name}`); }
   else { toast('Pick one player on a court'); ui.selected=null; render(); }
 }
+/* Touch: a quick tap selects/swaps, a swipe scrolls the page as normal, and
+   holding a name for a moment "lifts" it so it can be dragged. (Cards used to
+   grab every touch, which made the page hard to scroll on a phone.)
+   Mouse: drag starts as soon as the pointer moves. */
+const LONG_PRESS = 220;
 let drag=null;
 document.addEventListener('pointerdown', e=>{
+  if(drag) return; // a second finger never hijacks a drag in progress
   const chip = e.target.closest('[data-chip]');
-  if(!chip) return;
-  e.preventDefault();
-  drag = { pid:chip.dataset.chip, x:e.clientX, y:e.clientY, el:chip, moved:false, ghost:null };
+  if(!chip || e.button>0) return;
+  drag = { pid:chip.dataset.chip, x:e.clientX, y:e.clientY, el:chip, moved:false, ghost:null, armed:false, cancel:false };
+  if(e.pointerType==='mouse'){
+    drag.armed = true; e.preventDefault();
+    try{ chip.setPointerCapture(e.pointerId); }catch(err){} // keep the drag even if the mouse leaves the window
+    return;
+  }
+  const d = drag;
+  d.timer = setTimeout(()=>{
+    if(drag!==d || d.cancel) return;
+    d.armed = true; d.el.classList.add('lifting');
+    buzz();
+  }, LONG_PRESS);
+});
+// once a card is lifted, stop the page from scrolling under the finger (bound per card in bindChipTouch)
+function stopScrollWhileLifted(e){ if(drag && drag.armed) e.preventDefault(); }
+document.addEventListener('contextmenu', e=>{ if(e.target.closest('[data-chip]')) e.preventDefault(); });
+document.addEventListener('pointercancel', ()=>{ // the browser took over (a scroll): forget the gesture
+  if(!drag) return;
+  clearTimeout(drag.timer); drag.el.classList.remove('lifting');
+  if(drag.ghost) drag.ghost.remove();
+  clearDropHints(); drag = null;
 });
 function dropTarget(x, y, pid){
   const under = document.elementFromPoint(x, y);
@@ -1211,15 +1553,21 @@ function clearDropHints(){
   document.querySelectorAll('.dropzone').forEach(x=>x.classList.remove('dropzone'));
 }
 document.addEventListener('pointermove', e=>{
-  if(!drag) return;
-  if(!drag.moved && Math.hypot(e.clientX-drag.x, e.clientY-drag.y)>12){
+  if(!drag || drag.cancel) return;
+  const dist = Math.hypot(e.clientX-drag.x, e.clientY-drag.y);
+  if(!drag.armed){ // finger moved before the hold finished: it's a scroll, not a drag
+    if(dist>10){ clearTimeout(drag.timer); drag.cancel = true; }
+    return;
+  }
+  if(!drag.moved && dist>6){
     drag.moved=true;
     const g = drag.el.cloneNode(true);
-    g.classList.add('dragghost'); document.body.appendChild(g); drag.ghost=g;
+    g.classList.remove('lifting','sel'); g.classList.add('dragghost'); document.body.appendChild(g); drag.ghost=g;
   }
   if(drag.moved){
     e.preventDefault();
-    drag.ghost.style.left=(e.clientX-65)+'px'; drag.ghost.style.top=(e.clientY-30)+'px';
+    // move the ghost with transform only (composited, no layout per frame)
+    drag.ghost.style.transform = `translate(${e.clientX-75}px, ${e.clientY-30}px)`;
     clearDropHints();
     const t = dropTarget(e.clientX, e.clientY, drag.pid);
     if(t) t.el.classList.add(t.type==='chip' ? 'drophint' : 'dropzone');
@@ -1229,8 +1577,10 @@ document.addEventListener('pointermove', e=>{
 document.addEventListener('pointerup', e=>{
   if(!drag) return;
   const d=drag; drag=null;
+  clearTimeout(d.timer); d.el.classList.remove('lifting');
   if(d.ghost) d.ghost.remove();
   clearDropHints();
+  if(d.cancel) return; // that was a scroll
   if(d.moved){
     const t = dropTarget(e.clientX, e.clientY, d.pid);
     if(t){
@@ -1247,7 +1597,7 @@ document.addEventListener('pointerup', e=>{
     const pid = d.pid;
     if(ui.selected && ui.selected!==pid){ trySwap(ui.selected, pid); }
     else if(ui.selected===pid){ ui.selected=null; render(); }
-    else { ui.selected=pid; render(); toast(`${nameOf(pid)} selected — tap someone to swap`); }
+    else { ui.selected=pid; render(); toast(`${nameOf(pid)} selected · tap someone to swap`); }
   }
 });
 
@@ -1269,7 +1619,6 @@ if(vh.get('live') && vh.get('db')){
 } else {
   load();
   if(!state){ state={screen:'setup'}; }
-  if(live && live.on && state.screen!=='setup'){ hostSubscribe(); }
   render();
 }
 </script>
