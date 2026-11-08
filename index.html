@@ -336,16 +336,21 @@ function setPartner(aId, bId){
 
 /* ---------- matchmaking ----------
    Every time a court frees up we score the possible lineups and take the
-   cheapest. Fairness dominates: the person who has waited most always plays,
-   and someone is only skipped for a better level match if they have the SAME
-   game count as whoever goes instead. Then teams are split so they're evenly
-   matched (wins + level) and people rotate through new partners/opponents. */
+   cheapest. Fairness dominates: a novice who has played fewer games is never
+   skipped, and nobody is skipped by two or more games. Within that, novices and
+   the "upper" tier (intermediate + advanced) are kept on separate courts when
+   both tiers can fill one; upper players may wait at most ONE game to stay
+   grouped, so slow novice games never cost novices a turn. Then teams are split
+   so they're evenly matched (level + wins) and partners/opponents rotate. */
 const W = {
   invert:1000, // skipping a player who has played FEWER games (or was manually placed) — effectively never
   halfPair:200, // sending one fixed partner on without the other — only to stop someone who's played less sitting again
-  anchor:  15, // skipping whoever is #1 in the queue (only happens when fixed pairs force it)
+  anchor:  15, // skipping whoever is #1 in the queue (only happens when fixed pairs or tier grouping force it)
   rest:    25, // putting someone straight back on from the last match while a waiting player sits
   skip:     4, // skipping a same-game-count player who has waited longer (to get a better match)
+  upperWait:15, // letting an int/adv player wait one game so a novice four (or upper four) can form
+  tierMix: 40, // a court mixing novices with int/adv players, at full tier-grouping strength
+  novFirst: 8, // on equal game counts, novices go first: their games run longer, so they'd otherwise fall behind
   spread:   5, // per level of difference between strongest and weakest in the four
   partner:  4, // per time two teammates have already partnered
   opp:      1, // per time two players have already faced each other
@@ -363,9 +368,20 @@ function strength(p){
   return lv(p) + WIN_SPAN * (wr-0.5) * 2;
 }
 const LOOKAHEAD = 4; // how far past the top 4 we look for a better level match
+const TIER_LOOKAHEAD = 8; // further, when there are enough players to keep tiers apart
 
 function lv(p){ return (p && p.level) || 0; }
 function levelMatchOn(){ return !state.settings || state.settings.levelMatch!==false; }
+function isUpper(p){ return lv(p)>=2; }
+/* How hard to keep novices and int/adv apart: 0 when either tier can't fill a
+   court on its own (mixing is unavoidable), rising to 1 as the two tiers even out. */
+function tierStrength(){
+  if(!levelMatchOn()) return 0;
+  const act = state.players.filter(p=>p.status==='queued' || p.status==='playing');
+  const up = act.filter(isUpper).length, nov = act.length - up;
+  if(up<4 || nov<4) return 0;
+  return 0.5 + 0.5 * Math.min(up, nov) / Math.max(up, nov);
+}
 
 function pairCounts(){
   const part = new Map(), opp = new Map();
@@ -407,7 +423,15 @@ function chooseFour(pc){
   pc = pc || pairCounts();
   const rank = new Map(q.map((p,i)=>[p.id,i]));
   const mateOf = p => p.partnerId && rank.has(p.partnerId) ? byId(p.partnerId) : null;
-  const pool = q.slice(0, 4+LOOKAHEAD);
+  const tiers = tierStrength();
+  // Before the first game, queue order is just the order names were typed: it
+  // means nothing, so look at everyone and don't charge for "skipping" anyone.
+  const fresh = state.matches.length===0;
+  let pool;
+  if(fresh){ // up to 6 of each tier in typed order: enough to form whole-tier fours, small enough to stay fast on a phone
+    const nov = q.filter(p=>!isUpper(p)).slice(0,6), up = q.filter(isUpper).slice(0,6);
+    pool = q.filter(p=>nov.includes(p) || up.includes(p));
+  } else pool = q.slice(0, 4 + (tiers>0 ? TIER_LOOKAHEAD : LOOKAHEAD));
   for(const p of pool.slice()){ const m = mateOf(p); if(m && !pool.includes(m)) pool.push(m); } // pairs travel together
   const anchor = q[0], n = pool.length;
   const last = state.matches[0], justPlayed = new Set(last && last.ai ? [...last.ai, ...last.bi] : []);
@@ -419,17 +443,33 @@ function chooseFour(pc){
     let cost = W.halfPair * ps.filter(p=>{ const m = mateOf(p); return m && !ps.includes(m); }).length;
     for(const s of pool){
       if(ps.includes(s)) continue;
-      if(s===anchor) cost += W.anchor;
+      if(s===anchor && !fresh) cost += W.anchor;
+      let waited = false;
       for(const c of ps){
         if(eff(c) <= rank.get(s.id)) continue;
-        if(qKey(s).g < qKey(c).g || s.pin) { cost += W.invert; continue; }
-        cost += W.skip;
+        const gap = qKey(c).g - qKey(s).g;
+        if(gap>0 || s.pin){
+          // the one allowed exception: an int/adv player may sit ONE game so novices
+          // can play together. Never a novice, never two games, never a placed player.
+          if(tiers>0 && !s.pin && gap===1 && isUpper(s) && !isUpper(c)){
+            if(!waited){ cost += W.upperWait; waited = true; }
+            if(justPlayed.has(c.id) && !justPlayed.has(s.id)) cost += W.rest;
+            continue;
+          }
+          cost += W.invert; continue;
+        }
+        if(!fresh) cost += W.skip;
+        if(tiers>0 && !fresh && !isUpper(s) && isUpper(c)) cost += W.novFirst;
         if(justPlayed.has(c.id) && !justPlayed.has(s.id)) cost += W.rest;
       }
     }
     if(levelMatchOn()){
       const known = ps.map(lv).filter(Boolean);
       if(known.length>1) cost += W.spread * (Math.max(...known)-Math.min(...known));
+      const up = ps.filter(isUpper).length;
+      if(tiers>0 && up>0 && up<4) cost += W.tierMix * tiers; // novices mixed in with int/adv
+      // first round: novices take the first court(s), a head start for their longer games
+      if(tiers>0 && fresh && up===0) cost -= W.novFirst;
     }
     const split = bestSplit(ps, pc);
     if(!split) continue;
@@ -830,9 +870,16 @@ function chipHtml(pid, extra=''){
 }
 /* Who goes on the next court that frees up (same logic fillCourts uses).
    With fewer than 4 waiting, everyone waiting is up next. */
+let nextUpMemo = { key:null, ids:null };
 function nextUpIds(){
+  // re-run the matchmaker only when the queue, levels, games or settings actually changed,
+  // not on every tap that just selects a name
+  const key = [state.rev, state.matches.length, levelMatchOn(), ...state.players.map(p=>p.id+p.status+p.games+p.level+(p.pin?p.pin.t:'')+(p.partnerId||''))].join('|');
+  if(nextUpMemo.key===key) return nextUpMemo.ids;
   const pick = chooseFour();
-  return new Set(pick ? pick.players.map(p=>p.id) : queuedPlayers().map(p=>p.id));
+  const ids = new Set(pick ? pick.players.map(p=>p.id) : queuedPlayers().map(p=>p.id));
+  nextUpMemo = { key, ids };
+  return ids;
 }
 /* Queue split into a highlighted "Up next" box and the rest */
 function queueSectionsHtml(rowHtml){
