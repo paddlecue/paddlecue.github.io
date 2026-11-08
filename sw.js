@@ -1,4 +1,4 @@
-const CACHE = 'paddlecue-v2';
+const CACHE = 'paddlecue-v3';
 const CDN_QR = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const NET_TIMEOUT = 3000; // on weak court-side signal, show the cached app after this long
