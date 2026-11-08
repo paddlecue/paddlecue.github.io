@@ -1,7 +1,7 @@
 {
-  "name": "Salitan — Pickleball Open Play",
-  "short_name": "Salitan",
-  "description": "Salitan — fair paddle-stacking rotation for casual 2v2 pickleball open play",
+  "name": "PaddleCue — Open Play Queue",
+  "short_name": "PaddleCue",
+  "description": "Your cue to play: a fair, mixing rotation for 2v2 open play",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

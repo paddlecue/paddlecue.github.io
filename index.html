@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<title>Salitan — Pickleball Open Play</title>
+<title>PaddleCue — Open Play Queue</title>
 <link rel="manifest" href="manifest.webmanifest">
 <!-- the app is always dark, so the browser bar matches the header in both schemes -->
 <meta name="color-scheme" content="dark">
@@ -96,10 +96,20 @@
   .chip{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:10px 6px; min-height:58px; text-align:center; font-size:16px; font-weight:700;
     user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:pan-y; position:relative; overflow-wrap:anywhere;
     transition:transform 160ms var(--ease-out);}
-  .chip:active{transform:scale(.97); transition-duration:100ms;}
+  .chip.vacant:active{transform:scale(.97); transition-duration:100ms;}
   .chip small{display:block; font-weight:500; color:var(--dim); font-size:12px; margin-top:2px;}
   .chip.sel{outline:3px solid var(--accent); outline-offset:1px;}
-  .chip.lifting{transform:scale(1.03); border-color:var(--accent);}
+  /* Hold-to-drag feedback, in two clear steps:
+     1. pressing: the card sinks for exactly the hold time (a built-in countdown)
+     2. lifting:  it pops up with a bright outline = "you can move it now" */
+  .chip.pressing, .qitem.pressing{transform:scale(.95); opacity:.8; transition:transform 220ms linear, opacity 220ms linear;}
+  .chip.lifting{transform:scale(1.06); opacity:1; outline:3px solid var(--accent); outline-offset:2px; border-color:var(--accent); background:#2e3b20;
+    transition:transform 180ms var(--ease-out), opacity 120ms ease;}
+  .qitem.lifting{transform:scale(1.02); opacity:1; outline:3px solid var(--accent); outline-offset:1px; background:#2e3b20; transition:transform 180ms var(--ease-out), opacity 120ms ease;}
+  .qitem{transition:transform 160ms var(--ease-out);}
+  /* the courts and queue rows are controls: no text selection or callouts on a long press
+     (kept off containers with inputs, where iOS would block typing) */
+  .court, .qitem{user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;}
   .chip.drophint{outline:2px dashed var(--accent); outline-offset:1px;}
   .chip.vacant{border-style:dashed; background:transparent; color:var(--dim); font-weight:500; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center;}
   .dropzone{outline:2px dashed var(--accent); outline-offset:2px; border-radius:16px;}
@@ -226,7 +236,7 @@
   .team.winflash::after{content:''; position:absolute; inset:-2px; border:2px solid var(--win); border-radius:16px; pointer-events:none; animation:winring 280ms var(--ease-out) forwards;}
   /* reduced motion: keep fades and color, drop movement and scaling */
   @media (prefers-reduced-motion: reduce){
-    button:active, .chip:active, .ptag:active, .chip.lifting{transform:none;}
+    button:active, .chip.vacant:active, .ptag:active, .chip.pressing, .qitem.pressing, .chip.lifting, .qitem.lifting{transform:none;}
     .modal{animation:fade 180ms ease;}
     .overlay.closing .modal{animation:fadeout 150ms ease forwards;}
     .toast{transform:none;}
@@ -237,7 +247,7 @@
 </head>
 <body>
 <header class="top">
-  <h1>🥒 Sali<span>tan</span></h1>
+  <h1><img src="icon-192.png" alt="" width="26" height="26" style="vertical-align:-5px; border-radius:7px; margin-right:6px">Paddle<span>Cue</span></h1>
   <div class="status" id="status"></div>
 </header>
 <div class="wrap" id="app"></div>
@@ -672,7 +682,7 @@ function save(){
 }
 function sessionAsText(){
   const L=[];
-  L.push('PICKLEBALL OPEN PLAY — SESSION LOG');
+  L.push('PADDLECUE — OPEN PLAY SESSION LOG');
   L.push('Exported: '+new Date().toLocaleString());
   L.push('');
   L.push('STANDINGS');
@@ -1141,7 +1151,7 @@ function rankedPlayers(){
 function shareText(){
   const d = new Date(state.startedAt||Date.now());
   const rank = rankedPlayers(), medals=['🥇','🥈','🥉'], L=[];
-  L.push(`🥒 Pickleball Open Play — ${d.toLocaleDateString(undefined,{month:'short', day:'numeric'})}`);
+  L.push(`🏓 PaddleCue open play — ${d.toLocaleDateString(undefined,{month:'short', day:'numeric'})}`);
   L.push(`${rank.length} players · ${state.matches.length} matches`);
   L.push('');
   L.push('Standings:');
@@ -1386,10 +1396,10 @@ function doAction(action, el){
     }
     case 'undo': if(undo()){ save(); animatedRender(); toast('Last result undone'); } return;
     case 'export-json':
-      download('salitan-session-'+stamp()+'.json', JSON.stringify({...state, undoStack:[]}, null, 1), 'application/json');
+      download('paddlecue-session-'+stamp()+'.json', JSON.stringify({...state, undoStack:[]}, null, 1), 'application/json');
       toast('Backup downloaded'); return;
     case 'export-txt':
-      download('salitan-log-'+stamp()+'.txt', sessionAsText());
+      download('paddlecue-log-'+stamp()+'.txt', sessionAsText());
       toast('Log downloaded'); return;
     case 'restore': {
       const fi = document.getElementById('restoreFile');
@@ -1425,7 +1435,7 @@ function doAction(action, el){
     case 'live-qr': openQrModal(); return;
     case 'live-share': {
       const url = liveLink();
-      if(navigator.share){ navigator.share({title:'Salitan — live', url}).catch(()=>{}); }
+      if(navigator.share){ navigator.share({title:'PaddleCue — live', url}).catch(()=>{}); }
       else if(navigator.clipboard){ navigator.clipboard.writeText(url).then(()=>toast('Link copied')); }
       return;
     }
@@ -1436,7 +1446,7 @@ function doAction(action, el){
     case 'resume-session': state.screen='main'; save(); render(); return;
     case 'share-summary': {
       const txt = shareText();
-      if(navigator.share){ navigator.share({title:'Pickleball Open Play', text:txt}).catch(()=>{}); }
+      if(navigator.share){ navigator.share({title:'PaddleCue open play', text:txt}).catch(()=>{}); }
       else if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>toast('Copied — paste it to the group chat')); }
       return;
     }
@@ -1477,33 +1487,42 @@ function trySwap(aId, bId){
    grab every touch, which made the page hard to scroll on a phone.)
    Mouse: drag starts as soon as the pointer moves. */
 const LONG_PRESS = 220;
+const GHOST_LIFT = 52; // on touch the dragged card floats this far above the thumb so it stays visible
 let drag=null;
+function liftCard(d){
+  d.armed = true;
+  d.vis.classList.remove('pressing'); d.vis.classList.add('lifting');
+  buzz();
+}
+function releaseCard(d){ clearTimeout(d.timer); d.vis.classList.remove('pressing','lifting'); }
 document.addEventListener('pointerdown', e=>{
   if(drag) return; // a second finger never hijacks a drag in progress
   const chip = e.target.closest('[data-chip]');
   if(!chip || e.button>0) return;
-  drag = { pid:chip.dataset.chip, x:e.clientX, y:e.clientY, el:chip, moved:false, ghost:null, armed:false, cancel:false };
-  if(e.pointerType==='mouse'){
+  // in the queue the whole row reacts, on court the card itself
+  drag = { pid:chip.dataset.chip, x:e.clientX, y:e.clientY, el:chip, vis:chip.closest('.qitem')||chip,
+           moved:false, ghost:null, armed:false, cancel:false, touch:e.pointerType!=='mouse' };
+  if(!drag.touch){
     drag.armed = true; e.preventDefault();
     try{ chip.setPointerCapture(e.pointerId); }catch(err){} // keep the drag even if the mouse leaves the window
     return;
   }
   const d = drag;
-  d.timer = setTimeout(()=>{
-    if(drag!==d || d.cancel) return;
-    d.armed = true; d.el.classList.add('lifting');
-    buzz();
-  }, LONG_PRESS);
+  d.vis.classList.add('pressing'); // instant "I've got it" feedback
+  d.timer = setTimeout(()=>{ if(drag===d && !d.cancel) liftCard(d); }, LONG_PRESS);
 });
 // once a card is lifted, stop the page from scrolling under the finger (bound per card in bindChipTouch)
 function stopScrollWhileLifted(e){ if(drag && drag.armed) e.preventDefault(); }
 document.addEventListener('contextmenu', e=>{ if(e.target.closest('[data-chip]')) e.preventDefault(); });
+document.addEventListener('selectstart', e=>{ if(drag) e.preventDefault(); }); // never highlight text mid-gesture
 document.addEventListener('pointercancel', ()=>{ // the browser took over (a scroll): forget the gesture
   if(!drag) return;
-  clearTimeout(drag.timer); drag.el.classList.remove('lifting');
+  releaseCard(drag);
   if(drag.ghost) drag.ghost.remove();
   clearDropHints(); drag = null;
 });
+/* where the card will land: the floating card's center on touch, the pointer on a mouse */
+function dropPoint(d, e){ return { x:e.clientX, y:e.clientY - (d.touch ? GHOST_LIFT : 0) }; }
 function dropTarget(x, y, pid){
   const under = document.elementFromPoint(x, y);
   if(!under) return null;
@@ -1554,22 +1573,28 @@ function clearDropHints(){
 }
 document.addEventListener('pointermove', e=>{
   if(!drag || drag.cancel) return;
-  const dist = Math.hypot(e.clientX-drag.x, e.clientY-drag.y);
-  if(!drag.armed){ // finger moved before the hold finished: it's a scroll, not a drag
-    if(dist>10){ clearTimeout(drag.timer); drag.cancel = true; }
-    return;
+  const dx = Math.abs(e.clientX-drag.x), dy = Math.abs(e.clientY-drag.y), dist = Math.hypot(dx, dy);
+  if(!drag.armed){
+    // Names can't scroll sideways (touch-action: pan-y), so a sideways move can only
+    // mean "drag": lift right away instead of making people wait out the hold.
+    if(dx>8 && dx>dy){ clearTimeout(drag.timer); liftCard(drag); }
+    else { // up/down before the hold finished: it's a scroll
+      if(dist>10){ releaseCard(drag); drag.cancel = true; }
+      return;
+    }
   }
   if(!drag.moved && dist>6){
     drag.moved=true;
     const g = drag.el.cloneNode(true);
-    g.classList.remove('lifting','sel'); g.classList.add('dragghost'); document.body.appendChild(g); drag.ghost=g;
+    g.classList.remove('lifting','pressing','sel'); g.classList.add('dragghost'); document.body.appendChild(g); drag.ghost=g;
   }
   if(drag.moved){
     e.preventDefault();
-    // move the ghost with transform only (composited, no layout per frame)
-    drag.ghost.style.transform = `translate(${e.clientX-75}px, ${e.clientY-30}px)`;
+    // move the ghost with transform only (composited, no layout per frame); on touch it rides above the thumb
+    const p = dropPoint(drag, e);
+    drag.ghost.style.transform = `translate(${p.x-75}px, ${p.y-30}px)`;
     clearDropHints();
-    const t = dropTarget(e.clientX, e.clientY, drag.pid);
+    const t = dropTarget(p.x, p.y, drag.pid);
     if(t) t.el.classList.add(t.type==='chip' ? 'drophint' : 'dropzone');
     drag.ghost.classList.toggle('benchhint', !t && !!findSlot(drag.pid));
   }
@@ -1577,12 +1602,13 @@ document.addEventListener('pointermove', e=>{
 document.addEventListener('pointerup', e=>{
   if(!drag) return;
   const d=drag; drag=null;
-  clearTimeout(d.timer); d.el.classList.remove('lifting');
+  releaseCard(d);
   if(d.ghost) d.ghost.remove();
   clearDropHints();
   if(d.cancel) return; // that was a scroll
   if(d.moved){
-    const t = dropTarget(e.clientX, e.clientY, d.pid);
+    const p = dropPoint(d, e);
+    const t = dropTarget(p.x, p.y, d.pid);
     if(t){
       if(t.type==='chip'){ trySwap(d.pid, t.el.dataset.chip); }
       else if(t.type==='vacant'){

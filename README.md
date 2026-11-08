@@ -1,15 +1,15 @@
-# Salitan — Pickleball Open Play
+# PaddleCue — Open Play Queue
 
 A tiny, offline-first web app for running fair **2v2 pickleball open play**. It manages the paddle queue, rotates players onto courts, tracks scores and standings, and shares results with the group — all from a phone, no install or account required.
 
-*"Salitan" means taking turns — which is the whole point: everybody gets a fair, rotating game.*
+*Your cue to play.* Everybody gets a fair, rotating game, with new partners and evenly matched teams.
 
 ## Features
 
-- **Paddle queue / stacking rotation** — add players, and Salitan builds balanced 2v2 matchups and rotates the next group on as courts free up.
+- **Paddle queue / stacking rotation** — add players, and PaddleCue builds balanced 2v2 matchups and rotates the next group on as courts free up.
 - **Fair, mixing rotation** — fewest games plays next, then longest wait; nobody goes straight back on while someone who's waited is still sitting. Teams are split so you rotate through new partners and opponents.
-- **Player levels** — everyone starts as Novice; tap to change to Intermediate or Advanced. Salitan groups similar levels on a court when it can do so without making anyone wait longer.
-- **Balanced teams** — teammates are assigned by level first, nudged by win rate, so two strong players aren't stacked against two weaker ones. **⇄ Swap teammates** cycles the three possible pairings in one tap, or tap two names to swap them.
+- **Player levels** — everyone starts as Novice; tap to change to Intermediate or Advanced. PaddleCue groups similar levels on a court when it can do so without making anyone wait longer.
+- **Balanced teams** — teammates are assigned by level first, nudged by win rate, so two strong players aren't stacked against two weaker ones. **⇄ Swap pairs** cycles the three possible pairings in one tap, tap two names to swap them, or hold a name to drag it.
 - **Up next** — the next four going on court are shown in their own box at the top of the queue.
 - **Late arrivals** go on the next court that opens up.
 - **Multiple courts** — run several courts at once; each shows the current match and who's up next.
