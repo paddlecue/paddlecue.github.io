@@ -68,7 +68,9 @@
   header.top h1{font-size:21px; letter-spacing:.3px;}
   header.top h1 span{color:var(--accent);}
   .status{font-size:13px; color:var(--dim); text-align:right;}
-  .status .live{color:var(--accent); font-weight:700;}
+  .status{display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
+  .livebtn{min-height:36px; padding:0 12px; border-radius:99px; border:1px solid var(--accent); background:rgba(195,245,60,.1); color:var(--accent); font-size:13px; font-weight:700;}
+  .livebtn.bad{border-color:var(--danger); color:var(--danger); background:rgba(255,122,110,.1);}
   /* bottom tabs */
   nav.tabs{position:fixed; bottom:0; left:0; right:0; background:#151b14; border-top:1px solid var(--line); display:flex; z-index:20;
     padding:0 max(8px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(8px, env(safe-area-inset-left, 0px));}
@@ -759,7 +761,9 @@ function renderStatus(){
   const el = document.getElementById('status'); if(!el) return;
   if(IS_VIEWER || !state || state.screen!=='main'){ el.innerHTML=''; return; }
   const n = state.players.filter(p=>p.status!=='out').length, c = state.courts.length;
-  el.innerHTML = `${live && live.on ? '<span class="live">● LIVE</span> · ' : ''}${n} players · ${c} court${c===1?'':'s'}`;
+  // when live, the badge is the fastest way to the QR for someone who just arrived
+  const badge = live.on && liveReady() ? `<button class="livebtn ${live.failing?'bad':''}" data-action="live-qr" aria-label="Show the live QR code">● LIVE${live.failing?' ⚠':''} <span aria-hidden="true">▦</span></button>` : '';
+  el.innerHTML = `${badge}<span>${n} players · ${c} court${c===1?'':'s'}</span>`;
 }
 function render(){
   if(IS_VIEWER){ if(state) renderViewer(); renderStatus(); return; }
@@ -1038,22 +1042,19 @@ function renderLog(){
     </div>
     <div class="card">
       <h3>📡 Live sharing</h3>
-      ${live && live.on ? `
-        <p class="subtle" style="margin:6px 0 10px">Players can watch the courts, queue and standings at your link. Only this phone can make changes.</p>
+      ${live.on ? `
+        <p class="subtle" style="margin:6px 0 10px">Players scan your QR and watch the courts, queue and standings on their own phone. Nothing to type or install. Only this phone can make changes.${live.failing ? '<br><b style="color:var(--danger)">The last update didn\'t go through; it retries on your next change.</b>' : ''}</p>
         <button class="btn primary big" style="width:100%" data-action="live-qr">🔳 Show QR code</button>
         <div class="row" style="margin-top:8px">
           <button class="btn grow" data-action="live-share">📤 Share link</button>
           <button class="btn grow" data-action="live-copy">📋 Copy</button>
         </div>
-        <button class="btn danger" style="width:100%; margin-top:8px" data-action="live-stop">Stop sharing</button>`
-      : live && live.dbUrl ? `
-        <p class="subtle" style="margin:6px 0 10px">Let everyone follow along on their own phone.</p>
-        <button class="btn primary big" style="width:100%" data-action="live-start">🔴 Go live</button>`
+        <button class="btn danger" style="width:100%; margin-top:8px" data-action="live-stop">Stop sharing</button>
+        <p class="hint">Your link stays the same for every session, so players can keep it. It expires after a week without use.</p>`
       : `
-        <p class="subtle" style="margin:6px 0 10px">One-time setup: paste your Firebase Realtime Database URL.</p>
-        <input id="dbUrl" style="width:100%" inputmode="url" autocomplete="off" placeholder="https://your-db-default-rtdb.firebaseio.com">
-        <button class="btn primary" style="width:100%; margin-top:8px" data-action="live-setup">Save &amp; go live</button>
-        <p class="hint">Free at console.firebase.google.com → Create project → Build → Realtime Database → Create database (test mode) → copy the URL shown in the Data tab.</p>`}
+        <p class="subtle" style="margin:6px 0 10px">Let everyone follow along on their own phone: they scan your QR and that's it.</p>
+        <button class="btn primary big" style="width:100%" data-action="live-start" ${liveReady() ? '' : 'disabled'}>🔴 Go live</button>
+        ${liveReady() ? '' : '<p class="hint">Live sharing isn\'t switched on in this version yet.</p>'}`}
     </div>
     <div class="card">
       <h3>Finish session</h3>
@@ -1099,24 +1100,108 @@ function stamp(){
   return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
 }
 
-/* ---------- live sharing (Firebase RTDB via REST) ---------- */
-const LIVE_KEY = 'pickle-live-v1';
+/* ---------- live rooms (Firebase Realtime Database + anonymous sign-in, plain REST) ----------
+   The host's phone signs in invisibly (anonymous, no email, nothing to tap) and owns its room.
+   Players scan the host's QR: it opens #r=<roomId> and they're watching. Nothing to type.
+   The database rules (database.rules.json) only let the owner write, and rooms idle for
+   7 days get swept up by the next host who goes live. */
+const FB = {
+  apiKey: 'AIzaSyCx_gab1oku0qTj0GI-34lvYvMqMZ-oqn4',  // Firebase web API key (public by design; access is controlled by the database rules)
+  db: 'https://picklequeue-fa7cc-default-rtdb.asia-southeast1.firebasedatabase.app',
+};
+const WEEK = 7*24*60*60*1000;
+const liveReady = () => !!FB.apiKey;
+
+/* invisible anonymous sign-in: one id per phone, refreshed in the background */
+const AUTH_KEY = 'pc-auth-v1';
+let authInfo = null; try{ authInfo = JSON.parse(localStorage.getItem(AUTH_KEY)||'null'); }catch(e){}
+let authPending = null;
+function authSave(){ try{ localStorage.setItem(AUTH_KEY, JSON.stringify(authInfo)); }catch(e){} }
+async function getToken(){
+  if(authInfo && authInfo.idToken && authInfo.exp > Date.now()+60000) return authInfo.idToken;
+  if(authPending) return authPending;
+  authPending = (async ()=>{
+    if(authInfo && authInfo.refreshToken){
+      const r = await fetch('https://securetoken.googleapis.com/v1/token?key='+FB.apiKey, { method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(authInfo.refreshToken) });
+      if(r.ok){ const j = await r.json(); authInfo = { uid:j.user_id, idToken:j.id_token, refreshToken:j.refresh_token, exp:Date.now()+(+j.expires_in)*1000 }; authSave(); return authInfo.idToken; }
+    }
+    const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key='+FB.apiKey, { method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({ returnSecureToken:true }) });
+    if(!r.ok) throw new Error('sign-in failed ('+r.status+')');
+    const j = await r.json();
+    authInfo = { uid:j.localId, idToken:j.idToken, refreshToken:j.refreshToken, exp:Date.now()+(+j.expiresIn)*1000 }; authSave();
+    return authInfo.idToken;
+  })();
+  try{ return await authPending; } finally { authPending = null; }
+}
+
+/* the host's live room */
+const LIVE_KEY = 'pc-live-v1';
 let live = null; try{ live = JSON.parse(localStorage.getItem(LIVE_KEY)||'null'); }catch(e){}
-if(!live || !live.dbUrl) live = { dbUrl:'https://picklequeue-fa7cc-default-rtdb.asia-southeast1.firebasedatabase.app', id:null, on:false };
-function liveSave(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify(live)); }catch(e){} }
-function liveUrl(){ return live.dbUrl.replace(/\/$/,'')+'/sessions/'+live.id+'.json'; }
-function liveLink(){ return location.origin+location.pathname+'#live='+live.id+'&db='+encodeURIComponent(live.dbUrl.replace(/\/$/,'')); }
+if(!live) live = { room:null, on:false };
+live.failing = false;
+function liveSave(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({ room:live.room, on:live.on })); }catch(e){} }
+function newRoomId(){
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', b = crypto.getRandomValues(new Uint8Array(16));
+  return [...b].map(x=>abc[x % abc.length]).join('');
+}
+function roomUrl(id, token, query){ return `${FB.db}/rooms/${id}.json${token||query ? '?' : ''}${token ? 'auth='+token : ''}${token&&query ? '&' : ''}${query||''}`; }
+function liveLink(){ return location.origin + location.pathname + '#r=' + live.room; }
+
 let pushT = null;
-/* Only the host edits; viewers just watch. The host's state.rev is bumped in
-   save(), so every push carries a strictly newer version than the last. */
+/* Only the host writes. state.rev is bumped in save(), so every push is strictly newer. */
 function pushLive(){
-  if(IS_VIEWER || !live || !live.on || !live.id || !state || state.screen==='setup') return;
+  if(IS_VIEWER || !live.on || !live.room || !state || state.screen==='setup' || !liveReady()) return;
   clearTimeout(pushT);
-  pushT = setTimeout(()=>{
-    const payload = {...state, undoStack:[], t:Date.now()};
-    fetch(liveUrl(), {method:'PUT', body: JSON.stringify(payload)}).catch(()=>{});
+  pushT = setTimeout(async ()=>{
+    try{
+      const token = await getToken();
+      const body = { owner:authInfo.uid, t:{'.sv':'timestamp'}, state:{ ...state, undoStack:[] } };
+      const r = await fetch(roomUrl(live.room, token), { method:'PUT', body:JSON.stringify(body) });
+      if(!r.ok) throw new Error('save failed ('+r.status+')');
+      if(live.failing){ live.failing = false; renderStatus(); }
+    }catch(err){
+      if(!live.failing){ live.failing = true; renderStatus(); toast("Live view couldn't update. It will retry on your next change."); }
+    }
   }, 400);
 }
+async function goLive(){
+  if(!liveReady()){ toast("Live sharing isn't set up yet"); return false; }
+  try{ await getToken(); }catch(e){ toast("Couldn't connect. Check your signal and try again."); return false; }
+  await retireIfExpired();
+  if(!live.room) live.room = newRoomId();
+  live.on = true; liveSave(); pushLive();
+  return true;
+}
+async function stopLive(){
+  const id = live.room; live.on = false; live.room = null; live.failing = false; liveSave();
+  if(id && liveReady()){ try{ const token = await getToken(); await fetch(roomUrl(id, token), { method:'DELETE' }); }catch(e){} }
+}
+/* A room with no updates for 7 days is retired: it's deleted and the next go-live starts a
+   fresh room (new QR). Rooms abandoned on other phones are swept by a daily server-side
+   cleanup (planned with the notification helper). */
+async function retireIfExpired(){
+  if(!live.room || !liveReady()) return;
+  try{
+    const r = await fetch(roomUrl(live.room));
+    const room = r.ok ? await r.json() : null;
+    if(room && typeof room.t==='number' && room.t < Date.now() - WEEK){
+      const token = await getToken();
+      await fetch(roomUrl(live.room, token), { method:'DELETE' });
+      live.room = null; liveSave();
+    }
+  }catch(e){}
+}
+/* opening the app after a week away: retire the old room, and if still live, carry on in a new one */
+async function resumeLive(){
+  if(!live.on || !liveReady()) return;
+  const before = live.room;
+  await retireIfExpired();
+  if(!live.room){ live.room = newRoomId(); liveSave(); if(before) toast('Your live link was a week old, so it was renewed. Show the new QR.'); }
+  pushLive(); renderStatus();
+}
+
 function normalizeState(s){
   s.players = s.players||[]; s.courts = s.courts||[]; s.matches = s.matches||[]; s.undoStack = s.undoStack||[];
   s.settings = s.settings||{ levelMatch:true };
@@ -1128,22 +1213,23 @@ function normalizeState(s){
   s.courts.forEach(c=>{ if(c.teams && (!c.teams[0] || !c.teams[1])) c.teams = null; });
   return s;
 }
-/* viewer */
+
+/* viewer: opened from the host's QR (#r=<room>) — read-only, nothing to tap */
 let viewerLastT = 0;
-function startViewer(db, id){
-  IS_VIEWER = true;
-  live = { dbUrl: db.replace(/\/$/,''), id: id, on: true };
-  state = null;
+function viewerMessage(text){ $app.innerHTML = `<div class="card" style="text-align:center"><p style="margin:8px 0">${text}</p></div>`; }
+function startViewer(id){
+  IS_VIEWER = true; state = null;
   $tabs.classList.add('hidden');
-  $app.innerHTML = '<div class="card"><p class="subtle">Connecting to live session…</p></div>';
-  const url = liveUrl();
-  const apply = data => {
-    if(!data){ state = null; $app.innerHTML='<div class="card"><p class="subtle">This live session has ended. Ask the organizer for the new link or QR code.</p></div>'; return; }
-    // a new host session (or a host that started over) may restart its version count
+  viewerMessage('<span class="subtle">Connecting to the live session…</span>');
+  const url = roomUrl(id);
+  const apply = room => {
+    if(!room || !room.state){ state = null; viewerMessage('This live session has ended.<br><span class="subtle">Ask the host to show their QR code again.</span>'); return; }
+    const data = room.state;
+    // ignore stale updates; a host that started over may restart its version count
     if(state && data.sid===state.sid && (data.rev||0) <= (state.rev||0)) return;
-    state = normalizeState(data); viewerLastT = data.t||Date.now(); render();
+    state = normalizeState(data); viewerLastT = room.t || Date.now(); render();
   };
-  const poll = ()=>{ fetch(url).then(r=>r.json()).then(apply).catch(()=>{}); };
+  const poll = ()=>{ fetch(url).then(r=>r.ok ? r.json() : null).then(apply).catch(()=>{}); };
   let pollT = null;
   try{
     const es = new EventSource(url);
@@ -1272,8 +1358,8 @@ function openQrModal(){
   $modalHost.innerHTML = `
     <div class="overlay" data-action="modal-bg">
       <div class="modal" style="text-align:center">
-        <h3>Scan to watch live</h3>
-        <p class="subtle" style="margin:6px 0 12px">Point a phone camera here — the live session opens right in their browser.</p>
+        <h3>Scan to follow along</h3>
+        <p class="subtle" style="margin:6px 0 12px">Point a phone camera here. Courts, queue and standings open right in their browser, nothing to type or install.</p>
         <div id="qrBox" style="background:#fff; border-radius:12px; padding:14px; display:inline-flex; align-items:center; justify-content:center; min-width:248px; min-height:248px"><span style="color:#888; font-size:13px">Generating…</span></div>
         <div class="row" style="margin-top:14px">
           <button class="btn grow" data-action="live-copy">📋 Copy link</button>
@@ -1466,19 +1552,14 @@ function doAction(action, el){
       };
       fi.click(); return;
     }
-    case 'live-setup': {
-      const u = (document.getElementById('dbUrl').value||'').trim().replace(/\/$/,'');
-      if(!/^https:\/\/[^\s\/]+\.(firebaseio\.com|firebasedatabase\.app)$/.test(u)){ toast("That doesn't look like a Realtime Database URL"); return; }
-      live = { dbUrl:u, id:null, on:false }; liveSave(); doAction('live-start'); return;
-    }
     case 'live-start':
-      if(!live || !live.dbUrl) return;
       if(!state.sid) state.sid = Math.random().toString(36).slice(2,10); // older saved sessions
-      live.id = state.sid;
-      live.on = true; liveSave(); pushLive(); render(); toast('You are live — share the link'); return;
+      el.disabled = true;
+      goLive().then(ok=>{ render(); if(ok){ toast("You're live"); openQrModal(); } });
+      return;
     case 'live-stop':
-      if(live){ fetch(liveUrl(), {method:'DELETE'}).catch(()=>{}); live.on = false; live.id = null; liveSave(); }
-      render(); toast('Live sharing stopped'); return;
+      stopLive().then(()=>{ render(); toast('Live sharing stopped'); });
+      return;
     case 'live-qr': openQrModal(); return;
     case 'live-share': {
       const url = liveLink();
@@ -1501,9 +1582,8 @@ function doAction(action, el){
       if(navigator.clipboard){ navigator.clipboard.writeText(shareText()).then(()=>toast('Summary copied')); }
       return;
     case 'new-session': {
-      if(confirm('Start a fresh session? Current players, queue and match log will be cleared, and any shared live links will stop working.')){
-        if(live && live.id){ fetch(liveUrl(), {method:'DELETE'}).catch(()=>{}); }
-        if(live){ live.on=false; live.id=null; liveSave(); }
+      if(confirm('Start a fresh session? Current players, queue and match log will be cleared.' + (live.on ? ' Your live link stays the same.' : ''))){
+        // the live room is kept on purpose: players' saved link shows the next session automatically
         localStorage.removeItem(LS_KEY); state=null; ui.setupNames=[]; ui.selected=null; ui.tab='play'; render();
       } return;
     }
@@ -1687,12 +1767,16 @@ if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   navigator.serviceWorker.register('sw.js');
 }
 const vh = new URLSearchParams(location.hash.slice(1));
-if(vh.get('live') && vh.get('db')){
-  startViewer(vh.get('db'), vh.get('live'));
+if(vh.get('r')){
+  startViewer(vh.get('r'));
+} else if(vh.get('live')){ // a link from before rooms existed
+  IS_VIEWER = true; $tabs.classList.add('hidden');
+  viewerMessage('This live link is from an older version.<br><span class="subtle">Ask the host to show their QR code again.</span>');
 } else {
   load();
   if(!state){ state={screen:'setup'}; }
   render();
+  resumeLive(); // pick up where the host left off (and renew a week-old room)
 }
 </script>
 </body>
