@@ -23,7 +23,7 @@ A tiny, offline-first web app for running fair **2v2 pickleball open play**. It 
 
 It's a single static page — no build step.
 
-- **Hosted:** open the deployed URL on your phone and *Add to Home Screen*.
+- **Hosted:** open **https://paddlecue.github.io** on your phone and *Add to Home Screen*. Free, no ads, no login.
 - **Local:** serve the folder over HTTP (a service worker needs `http`, not `file://`):
   ```bash
   npx serve .        # or: python3 -m http.server

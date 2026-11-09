@@ -821,7 +821,7 @@ function stepperHtml(action, val, min, max){
 function renderSetup(){
   $tabs.classList.add('hidden');
   const n = ui.setupNames.length;
-  ui.setupCourts = ui.setupCourts || 2;
+  ui.setupCourts = ui.setupCourts || 1; // most groups run one court; tap + for more
   $app.innerHTML = `
     <div class="card">
       <h2 style="font-size:22px">Who's playing today?</h2>
@@ -1369,11 +1369,11 @@ function doAction(action, el){
       toast(levelMatchOn() ? 'Grouping by level' : 'Ignoring levels'); return;
     case 'setup-start': {
       if(ui.setupNames.length<4){ toast('Need at least 4 players'); return; }
-      state = freshState(ui.setupNames, ui.setupCourts||2);
+      state = freshState(ui.setupNames, ui.setupCourts||1);
       fillCourts(); save(); window.scrollTo(0,0); render(); return;
     }
     case 'setup-courts':
-      ui.setupCourts = Math.max(1, Math.min(12, (ui.setupCourts||2) + (+el.dataset.d)));
+      ui.setupCourts = Math.max(1, Math.min(12, (ui.setupCourts||1) + (+el.dataset.d)));
       renderSetup(); return;
     case 'tab': ui.tab = el.dataset.tab; ui.selected=null; render(); return;
     case 'shuffle': shuffleTeams(+el.dataset.court); save(); animatedRender(); return;
