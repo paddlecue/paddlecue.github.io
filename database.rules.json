@@ -2,21 +2,42 @@
   // PaddleCue Realtime Database rules.
   // Paste into Firebase console > Realtime Database > Rules, then Publish.
   //
-  // rooms/<roomId> = { owner: <anonymous uid>, t: <server time of last update>, state: <session> }
-  // - Anyone with the link (the QR) can watch a room. Room ids are long and random, and rooms can't be listed.
-  // - Only the phone that created a room can change or delete it.
-  // - A room idle for 7 days can be deleted by any signed-in phone. The host's app retires its own
+  // rooms/<roomId>          = { owner: <anonymous uid>, t: <server time of last update>, state: <session> }
+  // hostkeys/<roomId>       = secret co-host key (in the co-host QR). Never readable.
+  // editors/<roomId>/<uid>  = the key a co-host device presented when it joined. Never readable.
+  //
+  // - Anyone with the player link can watch a room. Room ids are long and random, and rooms can't be listed.
+  // - The phone that created a room (owner) and any device holding the current co-host key can change it.
+  //   Only the owner can delete it, set or rotate the co-host key, or remove all co-hosts.
+  // - Every update must be exactly one version newer than what's stored, so two hosts tapping at the
+  //   same moment can't silently overwrite each other: the second write is refused and that device
+  //   reloads the latest version.
+  // - A room idle for 7 days can be deleted by any signed-in device. The host's app retires its own
   //   week-old room; a daily server-side sweep for abandoned rooms is planned with the notification helper.
   //   (The query-based listing rule below is kept for that, but Firebase currently refuses it over REST.)
   "rules": {
     "rooms": {
       ".indexOn": ["t"],
-      // the only listing allowed: rooms idle for over 7 days, so they can be cleaned up
       ".read": "auth != null && query.orderByChild === 't' && query.endAt <= now - 604800000",
       "$room": {
         ".read": true,
-        ".write": "auth != null && ((!data.exists() && newData.child('owner').val() === auth.uid) || (data.child('owner').val() === auth.uid && (!newData.exists() || newData.child('owner').val() === auth.uid)) || (!newData.exists() && data.child('t').val() < now - 604800000))",
-        ".validate": "!newData.exists() || ($room.matches(/^[A-Za-z0-9]{16,32}$/) && newData.hasChildren(['owner', 't', 'state']) && newData.child('t').val() === now)"
+        ".write": "auth != null && ((!data.exists() && newData.child('owner').val() === auth.uid) || ((data.child('owner').val() === auth.uid || (root.child('editors').child($room).child(auth.uid).exists() && root.child('editors').child($room).child(auth.uid).val() === root.child('hostkeys').child($room).val())) && newData.exists() && newData.child('owner').val() === data.child('owner').val()) || (!newData.exists() && data.child('owner').val() === auth.uid) || (!newData.exists() && data.child('t').val() < now - 604800000))",
+        ".validate": "!newData.exists() || ($room.matches(/^[A-Za-z0-9]{16,32}$/) && newData.hasChildren(['owner', 't', 'state']) && newData.child('t').val() === now && (!data.exists() || newData.child('state').child('rev').val() === data.child('state').child('rev').val() + 1))"
+      }
+    },
+    "hostkeys": {
+      "$room": {
+        ".write": "auth != null && root.child('rooms').child($room).child('owner').val() === auth.uid && (!newData.exists() || newData.val().matches(/^[A-Za-z0-9]{20,40}$/))"
+      }
+    },
+    "editors": {
+      "$room": {
+        // the owner may remove every co-host at once
+        ".write": "auth != null && !newData.exists() && root.child('rooms').child($room).child('owner').val() === auth.uid",
+        "$uid": {
+          // a device adds itself by presenting the key from the co-host QR, and may remove itself
+          ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (root.child('hostkeys').child($room).exists() && newData.val() === root.child('hostkeys').child($room).val()))"
+        }
       }
     },
     // everything else (including the old open "sessions" area) is closed

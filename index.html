@@ -139,6 +139,12 @@
   .upnext .qitem{border-color:rgba(195,245,60,.35);}
   .waitlabel{font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--dim); margin:14px 4px 8px;}
   .quickadd{display:flex; gap:8px; margin-top:12px;}
+  /* check-in list: big, alphabetical, one tap per arrival */
+  .arrivals{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;}
+  .arrive{display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:3px; text-align:left; padding:10px 12px; min-height:60px;
+    background:var(--card2); border:1px solid var(--line); border-radius:14px; min-width:0;}
+  .arrive b{font-size:16px; overflow-wrap:anywhere;}
+  .arrive .go{color:var(--accent); font-weight:700; font-size:13px;}
   .quickadd input{flex:1;}
   details.help{margin-top:12px; border-top:1px solid var(--line); padding-top:4px;}
   details.help summary{min-height:var(--tap); display:flex; align-items:center; color:var(--dim); font-size:14px; font-weight:600; cursor:pointer; list-style:none;}
@@ -272,12 +278,15 @@ let state = null;
 const LEVELS = ['No level', 'Novice', 'Intermediate', 'Advanced'];
 const LV_SHORT = ['', 'N', 'I', 'A'];
 
-function freshState(entries, courtCount){
+/* checkIn: names were entered ahead of time, so everyone starts "not here yet" ('away')
+   and joins the queue when the host checks them in */
+function freshState(entries, courtCount, checkIn){
   const s = {
     screen:'main', startedAt:Date.now(), sid:Math.random().toString(36).slice(2,10), rev:0, tick:0, matchSeq:0,
     players:[], courts:[], matches:[], undoStack:[], settings:{ levelMatch:true }
   };
-  entries.forEach(e => s.players.push(mkPlayer(s, e.n, 0, e.lv)));
+  entries.forEach(e => { const p = mkPlayer(s, e.n, 0, e.lv); if(checkIn) p.status = 'away'; s.players.push(p); });
+  if(checkIn) s.checkIn = true;
   for(let i=1;i<=courtCount;i++) s.courts.push(mkCourt(i));
   return s;
 }
@@ -688,6 +697,30 @@ function toggleBreak(pid){
   return true;
 }
 
+/* A player entered ahead of time arrives. Before the first game it's first come, first
+   served. Once games have been played they arrive like a late joiner: level with whoever
+   has played least and first in line, so they get the next court without "catching up"
+   on games they weren't here for. */
+function checkIn(pid){
+  const p = byId(pid); if(!p || p.status!=='away') return false;
+  if(state.matches.length){
+    const active = state.players.filter(x=>x.status==='queued' || x.status==='playing');
+    p.base = active.length ? Math.min(...active.map(effGames)) : 0;
+    p.late = true;
+    state.lateSeq = (state.lateSeq||0)+1;
+    p.queuedAt = -1e6 + state.lateSeq;
+  } else p.queuedAt = (++state.tick);
+  p.status = 'queued'; p.pin = null;
+  fillCourts();
+  return true;
+}
+/* undo a check-in tapped by mistake (only while they haven't played yet) */
+function uncheckIn(pid){
+  const p = byId(pid); if(!p || p.status!=='queued' || p.games>0) return false;
+  p.status = 'away'; p.pin = null; p.late = false; p.base = 0;
+  return true;
+}
+
 function removePlayer(pid){
   const p = byId(pid); if(!p) return false;
   if(p.status==='playing') return false;
@@ -728,7 +761,7 @@ function sessionAsText(){
   L.push('Exported: '+new Date().toLocaleString());
   L.push('');
   L.push('STANDINGS');
-  state.players.filter(p=>p.status!=='out' || p.games>0)
+  state.players.filter(p=>(p.status!=='out' && p.status!=='away') || p.games>0)
     .slice().sort((a,b)=>b.wins-a.wins || a.losses-b.losses)
     .forEach(p=>L.push(`  ${p.name}: ${p.games} games, ${p.wins}W–${p.losses}L${p.late?' (joined late)':''}${p.status==='out'?' (left early)':''}`));
   L.push('');
@@ -762,7 +795,7 @@ function renderStatus(){
   if(IS_VIEWER || !state || state.screen!=='main'){ el.innerHTML=''; return; }
   const n = state.players.filter(p=>p.status!=='out').length, c = state.courts.length;
   // when live, the badge is the fastest way to the QR for someone who just arrived
-  const badge = live.on && liveReady() ? `<button class="livebtn ${live.failing?'bad':''}" data-action="live-qr" aria-label="Show the live QR code">● LIVE${live.failing?' ⚠':''} <span aria-hidden="true">▦</span></button>` : '';
+  const badge = live.on && liveReady() ? `<button class="livebtn ${live.failing?'bad':''}" data-action="live-qr" aria-label="Show the live QR code">${isCohost() ? "● CO-HOST" : "● LIVE"}${live.failing?' ⚠':''} <span aria-hidden="true">▦</span></button>` : '';
   el.innerHTML = `${badge}<span>${n} players · ${c} court${c===1?'':'s'}</span>`;
 }
 function render(){
@@ -814,6 +847,9 @@ function animatedRender(){
   });
 }
 
+/* remembered per device: does this host usually enter names before people arrive? */
+function checkInPref(){ try{ return localStorage.getItem('pc-pref-checkin')==='1'; }catch(e){ return false; } }
+
 function stepperHtml(action, val, min, max){
   return `<div class="stepper">
     <button class="ibtn" data-action="${action}" data-d="-1" ${val<=min?'disabled':''} aria-label="One fewer">−</button>
@@ -839,8 +875,12 @@ function renderSetup(){
       </div>
       ${n? '<p class="hint" style="margin-top:8px">Everyone starts as Novice. Tap a name to change: Novice → Intermediate → Advanced.</p>':''}
       <div class="setrow" style="margin-top:8px"><b>Courts</b>${stepperHtml('setup-courts', ui.setupCourts, 1, 12)}</div>
-      <button class="btn primary big" style="width:100%; margin-top:12px" data-action="setup-start" ${n<4?'disabled':''}>Start open play${n? ` · ${n} players` : ''}</button>
-      <p class="hint">${n<4 ? `Add ${4-n} more player${4-n===1?'':'s'} to start.` : 'Anyone beyond 4 per court waits in the paddle queue.'}</p>
+      <button class="btn toggle ${checkInPref()?'on':''}" style="margin-top:8px" data-action="setup-checkin" role="switch" aria-checked="${checkInPref()}">
+        <span><b>Players are still arriving</b><br><span class="subtle">Everyone starts as "not here yet". Tap ✓ Here as each person arrives; courts fill in arrival order.</span></span>
+        <span class="sw"></span>
+      </button>
+      <button class="btn primary big" style="width:100%; margin-top:12px" data-action="setup-start" ${n<4?'disabled':''}>${checkInPref() ? 'Start & check players in' : 'Start open play'}${n? ` · ${n} players` : ''}</button>
+      <p class="hint">${n<4 ? `Add ${4-n} more player${4-n===1?'':'s'} to start.` : checkInPref() ? 'Nobody goes on court until four are checked in.' : 'Anyone beyond 4 per court waits in the paddle queue.'}</p>
     </div>
     <div class="card">
       <div class="row" style="justify-content:space-between">
@@ -954,7 +994,16 @@ function renderPlay(){
       <button class="btn primary" data-action="break" data-pid="${p.id}">I'm back</button>
     </div>`).join('');
 
-  $app.innerHTML = courtsHtml + `
+  // names entered ahead of time who haven't arrived: one tap on a name checks them in
+  const away = state.players.filter(p=>p.status==='away').sort((a,b)=>a.name.localeCompare(b.name));
+  const awayHtml = away.length ? `
+    <div class="card" id="arrivals">
+      <div class="row" style="justify-content:space-between"><h3>👋 Not here yet</h3><span class="subtle">${away.length} to arrive</span></div>
+      <div class="arrivals">${away.map(p=>`<button class="arrive" data-action="check-in" data-pid="${p.id}" aria-label="Check in ${esc(p.name)}"><b>${esc(p.name)}</b><span class="go">✓ Here</span></button>`).join('')}</div>
+      ${away.length>1 ? `<button class="btn ghost" style="width:100%; margin-top:10px" data-action="check-in-all">Everyone's here</button>` : ''}
+    </div>` : '';
+  // before the first game, arrivals are what matters most, so they go on top
+  $app.innerHTML = (state.matches.length ? courtsHtml + awayHtml : awayHtml + courtsHtml) + `
     <div class="card" id="queueCard">
       <div class="row" style="justify-content:space-between"><h3>🏓 Paddle queue</h3><span class="subtle">${waitingCount} waiting</span></div>
       ${queueHtml}
@@ -992,11 +1041,13 @@ function renderPlayers(){
         ${lvBadge(p.level, p.id)}
       </div>
       <div class="bot">
-        <div class="who meta"><span class="st ${p.status}">${p.status==='break'?'on break':p.status}</span> ${bits.join(' · ')}</div>
+        <div class="who meta"><span class="st ${p.status}">${p.status==='break'?'on break':p.status==='away'?'not here yet':p.status}</span> ${bits.join(' · ')}</div>
         <div class="acts">
           <button class="ibtn ${p.partnerId?'on':''}" data-action="partner" data-pid="${p.id}" aria-label="Fixed partner">🔗</button>
-          ${p.status!=='playing' ? `<button class="ibtn" data-action="break" data-pid="${p.id}" aria-label="${p.status==='break'?'Back from break':'Take a break'}">${p.status==='break'?'▶':'💤'}</button>
-          <button class="ibtn danger" data-action="remove" data-pid="${p.id}" aria-label="Remove from session">✕</button>`:''}
+          ${p.status==='away' ? `<button class="ibtn on" data-action="check-in" data-pid="${p.id}" aria-label="Check in ${esc(p.name)}">✓</button>`
+            : state.checkIn && p.status==='queued' && p.games===0 ? `<button class="ibtn" data-action="uncheck-in" data-pid="${p.id}" aria-label="Not here yet: undo check-in">↩</button>` : ''}
+          ${p.status!=='playing' && p.status!=='away' ? `<button class="ibtn" data-action="break" data-pid="${p.id}" aria-label="${p.status==='break'?'Back from break':'Take a break'}">${p.status==='break'?'▶':'💤'}</button>` : ''}
+          ${p.status!=='playing' ? `<button class="ibtn danger" data-action="remove" data-pid="${p.id}" aria-label="Remove from session">✕</button>`:''}
         </div>
       </div>
     </div>`;
@@ -1042,15 +1093,28 @@ function renderLog(){
     </div>
     <div class="card">
       <h3>📡 Live sharing</h3>
-      ${live.on ? `
-        <p class="subtle" style="margin:6px 0 10px">Players scan your QR and watch the courts, queue and standings on their own phone. Nothing to type or install. Only this phone can make changes.${live.failing ? '<br><b style="color:var(--danger)">The last update didn\'t go through; it retries on your next change.</b>' : ''}</p>
+      ${live.on && isCohost() ? `
+        <p class="subtle" style="margin:6px 0 10px"><b style="color:var(--accent)">You're co-hosting.</b> Changes here and on the other host's device sync both ways.${live.failing ? '<br><b style="color:var(--danger)">The last update didn\'t go through; it retries on your next change.</b>' : ''}</p>
+        <button class="btn primary big" style="width:100%" data-action="live-qr">🔳 Show players' QR</button>
+        <div class="row" style="margin-top:8px">
+          <button class="btn grow" data-action="live-share">📤 Share link</button>
+          <button class="btn grow" data-action="live-copy">📋 Copy</button>
+        </div>
+        <button class="btn danger" style="width:100%; margin-top:8px" data-action="live-stop">Leave co-hosting</button>
+        <p class="hint">Leaving keeps a copy of the session on this device; the other host carries on.</p>`
+      : live.on ? `
+        <p class="subtle" style="margin:6px 0 10px">Players scan your QR and watch the courts, queue and standings on their own phone. Nothing to type or install.${live.failing ? '<br><b style="color:var(--danger)">The last update didn\'t go through; it retries on your next change.</b>' : ''}</p>
         <button class="btn primary big" style="width:100%" data-action="live-qr">🔳 Show QR code</button>
         <div class="row" style="margin-top:8px">
           <button class="btn grow" data-action="live-share">📤 Share link</button>
           <button class="btn grow" data-action="live-copy">📋 Copy</button>
         </div>
-        <button class="btn danger" style="width:100%; margin-top:8px" data-action="live-stop">Stop sharing</button>
-        <p class="hint">Your link stays the same for every session, so players can keep it. It expires after a week without use.</p>`
+        <button class="btn" style="width:100%; margin-top:8px" data-action="live-cohost">👥 Add a co-host device</button>
+        <div class="row" style="margin-top:8px">
+          <button class="btn ghost grow" data-action="live-reset-cohosts">Remove co-hosts</button>
+          <button class="btn danger grow" data-action="live-stop">Stop sharing</button>
+        </div>
+        <p class="hint">Your link stays the same for every session, so players can keep it. It expires after a week without use. A co-host (say, your iPad) scans the co-host QR and can run the session too.</p>`
       : `
         <p class="subtle" style="margin:6px 0 10px">Let everyone follow along on their own phone: they scan your QR and that's it.</p>
         <button class="btn primary big" style="width:100%" data-action="live-start" ${liveReady() ? '' : 'disabled'}>🔴 Go live</button>
@@ -1103,7 +1167,8 @@ function stamp(){
 /* ---------- live rooms (Firebase Realtime Database + anonymous sign-in, plain REST) ----------
    The host's phone signs in invisibly (anonymous, no email, nothing to tap) and owns its room.
    Players scan the host's QR: it opens #r=<roomId> and they're watching. Nothing to type.
-   The database rules (database.rules.json) only let the owner write, and rooms idle for
+   A second device can co-host by scanning the owner's co-host QR (#h=<room>&k=<key>).
+   The database rules (database.rules.json) only let the owner and co-hosts write, and rooms idle for
    7 days get swept up by the next host who goes live. */
 const FB = {
   apiKey: 'AIzaSyCx_gab1oku0qTj0GI-34lvYvMqMZ-oqn4',  // Firebase web API key (public by design; access is controlled by the database rules)
@@ -1136,70 +1201,233 @@ async function getToken(){
   try{ return await authPending; } finally { authPending = null; }
 }
 
-/* the host's live room */
+/* the live room. role 'owner' = the device that created it; 'cohost' = joined with the co-host QR.
+   Both can change everything; only the owner can stop sharing for everyone or reset co-host access. */
 const LIVE_KEY = 'pc-live-v1';
 let live = null; try{ live = JSON.parse(localStorage.getItem(LIVE_KEY)||'null'); }catch(e){}
 if(!live) live = { room:null, on:false };
-live.failing = false;
-function liveSave(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({ room:live.room, on:live.on })); }catch(e){} }
-function newRoomId(){
-  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', b = crypto.getRandomValues(new Uint8Array(16));
+live.role = live.role || 'owner'; live.baseRev = live.baseRev || 0; live.failing = false;
+function liveSave(){
+  try{ localStorage.setItem(LIVE_KEY, JSON.stringify({ room:live.room, on:live.on, role:live.role, owner:live.owner||null,
+    hostKey:live.hostKey||null, hostKeyRoom:live.hostKeyRoom||null, baseRev:live.baseRev||0 })); }catch(e){}
+}
+function randomId(n){
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', b = crypto.getRandomValues(new Uint8Array(n));
   return [...b].map(x=>abc[x % abc.length]).join('');
 }
+const newRoomId = () => randomId(16);
+function dbUrl(path, token){ return `${FB.db}/${path}.json${token ? '?auth='+token : ''}`; }
 function roomUrl(id, token, query){ return `${FB.db}/rooms/${id}.json${token||query ? '?' : ''}${token ? 'auth='+token : ''}${token&&query ? '&' : ''}${query||''}`; }
 function liveLink(){ return location.origin + location.pathname + '#r=' + live.room; }
+function cohostLink(){ return location.origin + location.pathname + '#h=' + live.room + '&k=' + live.hostKey; }
+const isCohost = () => live.on && live.role==='cohost';
+function persistLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }
 
-let pushT = null;
-/* Only the host writes. state.rev is bumped in save(), so every push is strictly newer. */
+/* ---- saving: every write must be exactly one version newer than the server's (enforced by the
+   database rules), so two hosts can't silently overwrite each other ---- */
+let pushT = null, pushing = false;
 function pushLive(){
   if(IS_VIEWER || !live.on || !live.room || !state || state.screen==='setup' || !liveReady()) return;
   clearTimeout(pushT);
-  pushT = setTimeout(async ()=>{
-    try{
-      const token = await getToken();
-      const body = { owner:authInfo.uid, t:{'.sv':'timestamp'}, state:{ ...state, undoStack:[] } };
-      const r = await fetch(roomUrl(live.room, token), { method:'PUT', body:JSON.stringify(body) });
-      if(!r.ok) throw new Error('save failed ('+r.status+')');
-      if(live.failing){ live.failing = false; renderStatus(); }
-    }catch(err){
-      if(!live.failing){ live.failing = true; renderStatus(); toast("Live view couldn't update. It will retry on your next change."); }
-    }
-  }, 400);
+  pushT = setTimeout(doPush, 400);
 }
+async function doPush(){
+  pushT = null;
+  if(pushing){ pushT = setTimeout(doPush, 300); return; } // one write at a time
+  if(!live.on || !live.room || !state || state.screen==='setup') return;
+  pushing = true;
+  const next = (live.baseRev||0) + 1;
+  try{
+    const token = await getToken();
+    if(live.role!=='cohost') live.owner = authInfo.uid;
+    state.rev = next;
+    const body = { owner:live.owner, t:{'.sv':'timestamp'}, state:{ ...state, undoStack:[] } };
+    const r = await fetch(roomUrl(live.room, token), { method:'PUT', body:JSON.stringify(body) });
+    if(r.ok){
+      live.baseRev = next; liveSave(); persistLocal();
+      if(live.failing){ live.failing = false; renderStatus(); }
+      if(live.role!=='cohost') ensureHostKey();
+    } else await handleRejectedPush();
+  }catch(err){ markFailing(); }
+  finally{ pushing = false; }
+}
+async function pushNow(){ clearTimeout(pushT); await doPush(); }
+function markFailing(){
+  if(!live.failing){ live.failing = true; renderStatus(); toast("Live view couldn't update. It will retry on your next change."); }
+}
+/* a refused save: either the other host changed something first, or this device lost access */
+async function handleRejectedPush(){
+  let room = null;
+  try{ const r = await fetch(roomUrl(live.room)); room = r.ok ? await r.json() : null; }catch(e){ markFailing(); return; }
+  if(!room){
+    if(isCohost()){ endCohost('The host stopped sharing this session.'); return; }
+    // the owner's room is gone (expired or removed elsewhere): start a fresh one
+    live.room = newRoomId(); live.baseRev = 0; live.hostKey = null; liveSave(); pushLive();
+    toast('Your live link was renewed. Show the new QR.');
+    return;
+  }
+  if((room.state && room.state.rev || 0) > (live.baseRev||0)){
+    adoptRoom(room);
+    toast("The other host made a change at the same moment. Yours wasn't saved, so please redo it.");
+    return;
+  }
+  if(isCohost()){ endCohost('Co-host access was removed. Ask the host for a new co-host QR.'); return; }
+  markFailing();
+}
+
+/* ---- staying in sync: hosts listen for each other's changes ---- */
+let hostES = null;
+function subscribeHost(){
+  if(hostES || IS_VIEWER || !live.on || !live.room || !liveReady()) return;
+  try{
+    hostES = new EventSource(roomUrl(live.room));
+    hostES.addEventListener('put', e=>{ try{ const d = JSON.parse(e.data); d.path==='/' ? onRemoteRoom(d.data) : refetchRoom(); }catch(err){} });
+    hostES.addEventListener('patch', ()=>refetchRoom());
+  }catch(e){}
+}
+function unsubscribeHost(){ if(hostES){ hostES.close(); hostES = null; } }
+async function refetchRoom(){ try{ const r = await fetch(roomUrl(live.room)); onRemoteRoom(r.ok ? await r.json() : null); }catch(e){} }
+function onRemoteRoom(room){
+  if(!live.on || IS_VIEWER) return;
+  if(!room){ if(isCohost()) endCohost('The host stopped sharing this session.'); return; }
+  const rev = room.state && room.state.rev || 0;
+  if(rev <= (live.baseRev||0)) return;  // our own change coming back, or old news
+  if(pushT || pushing) return;          // we have an unsaved change; the save will sort out who wins
+  adoptRoom(room);
+}
+function adoptRoom(room){
+  state = normalizeState(room.state);
+  state.undoStack = []; // undo history belongs to one device; after the other host's change it no longer applies
+  live.baseRev = room.state.rev || 0; liveSave(); persistLocal();
+  if(!drag) render();
+}
+
+/* ---- owner: going live, co-host key, stopping ---- */
 async function goLive(){
   if(!liveReady()){ toast("Live sharing isn't set up yet"); return false; }
   try{ await getToken(); }catch(e){ toast("Couldn't connect. Check your signal and try again."); return false; }
+  live.role = 'owner';
   await retireIfExpired();
-  if(!live.room) live.room = newRoomId();
-  live.on = true; liveSave(); pushLive();
+  if(!live.room){ live.room = newRoomId(); live.baseRev = 0; live.hostKey = null; }
+  else await syncBaseRev();
+  live.on = true; liveSave();
+  await pushNow();       // the room must exist before its co-host key can be set
+  await ensureHostKey();
+  subscribeHost();
   return true;
 }
-async function stopLive(){
-  const id = live.room; live.on = false; live.room = null; live.failing = false; liveSave();
-  if(id && liveReady()){ try{ const token = await getToken(); await fetch(roomUrl(id, token), { method:'DELETE' }); }catch(e){} }
+/* learn the server's version (and take any newer change a co-host made meanwhile) */
+async function syncBaseRev(){
+  try{
+    const r = await fetch(roomUrl(live.room)); const room = r.ok ? await r.json() : null;
+    if(room && room.state){ if((room.state.rev||0) > (live.baseRev||0)) adoptRoom(room); else live.baseRev = room.state.rev||0; }
+    else live.baseRev = 0;
+  }catch(e){}
 }
+let hostKeyPending = null;
+async function ensureHostKey(){
+  if(live.role==='cohost' || !live.room) return false;
+  if(live.hostKey && live.hostKeyRoom===live.room) return true;
+  if(hostKeyPending) return hostKeyPending;
+  hostKeyPending = (async ()=>{
+    const key = randomId(24);
+    try{
+      const token = await getToken();
+      const r = await fetch(dbUrl('hostkeys/'+live.room, token), { method:'PUT', body:JSON.stringify(key) });
+      if(!r.ok) return false;
+      live.hostKey = key; live.hostKeyRoom = live.room; liveSave(); return true;
+    }catch(e){ return false; }
+  })();
+  try{ return await hostKeyPending; } finally { hostKeyPending = null; }
+}
+/* new key + remove every co-host: old co-host QRs and devices stop working */
+async function resetCohosts(){
+  if(live.role==='cohost' || !live.room) return false;
+  try{ const token = await getToken(); await fetch(dbUrl('editors/'+live.room, token), { method:'DELETE' }); }catch(e){}
+  live.hostKey = null; liveSave();
+  return ensureHostKey();
+}
+async function stopLive(){
+  if(isCohost()) return leaveCohost();
+  const id = live.room; unsubscribeHost();
+  live.on = false; live.room = null; live.hostKey = null; live.hostKeyRoom = null; live.failing = false; live.baseRev = 0; liveSave();
+  if(id && liveReady()){
+    try{
+      const token = await getToken();
+      await fetch(dbUrl('editors/'+id, token), { method:'DELETE' });
+      await fetch(dbUrl('hostkeys/'+id, token), { method:'DELETE' });
+      await fetch(roomUrl(id, token), { method:'DELETE' });
+    }catch(e){}
+  }
+}
+
+/* ---- co-host: joining from the co-host QR, leaving ---- */
+async function joinCohost(roomId, key){
+  history.replaceState(null, '', location.pathname); // so a reload doesn't try to join again
+  if(!liveReady()) return;
+  if(isCohost() && live.room===roomId){ subscribeHost(); return; }
+  const hasOwn = state && state.screen!=='setup' && state.players && state.players.length;
+  if(live.on && live.role==='owner' && live.room && live.room!==roomId){
+    if(!confirm('This device is sharing its own live session. Switch to co-hosting the other one? Your own live link will stop.')) return;
+    await stopLive();
+  } else if(hasOwn && !confirm('Co-host this session? The session on this device will be replaced by the shared one.')) return;
+  try{
+    const token = await getToken();
+    const w = await fetch(dbUrl(`editors/${roomId}/${authInfo.uid}`, token), { method:'PUT', body:JSON.stringify(key) });
+    if(!w.ok){ toast("This co-host QR isn't valid anymore. Ask the host for a new one."); return; }
+    const r = await fetch(roomUrl(roomId)); const room = r.ok ? await r.json() : null;
+    if(!room || !room.state){ toast('That session has ended.'); return; }
+    unsubscribeHost();
+    live = { room:roomId, on:true, role:'cohost', owner:room.owner, baseRev:0, failing:false };
+    adoptRoom(room);
+    ui.tab = 'play'; render(); subscribeHost();
+    toast("You're co-hosting. Changes sync with the other host.");
+  }catch(e){ toast("Couldn't join. Check your signal and try again."); }
+}
+async function leaveCohost(){
+  const id = live.room; unsubscribeHost();
+  live = { room:null, on:false, role:'owner', baseRev:0, failing:false }; liveSave();
+  if(id && authInfo){ try{ const token = await getToken(); await fetch(dbUrl(`editors/${id}/${authInfo.uid}`, token), { method:'DELETE' }); }catch(e){} }
+}
+function endCohost(msg){ leaveCohost(); render(); toast(msg + ' Your copy stays on this device.'); }
+
 /* A room with no updates for 7 days is retired: it's deleted and the next go-live starts a
    fresh room (new QR). Rooms abandoned on other phones are swept by a daily server-side
    cleanup (planned with the notification helper). */
 async function retireIfExpired(){
-  if(!live.room || !liveReady()) return;
+  if(!live.room || !liveReady() || isCohost()) return;
   try{
     const r = await fetch(roomUrl(live.room));
     const room = r.ok ? await r.json() : null;
     if(room && typeof room.t==='number' && room.t < Date.now() - WEEK){
       const token = await getToken();
+      await fetch(dbUrl('editors/'+live.room, token), { method:'DELETE' });
+      await fetch(dbUrl('hostkeys/'+live.room, token), { method:'DELETE' });
       await fetch(roomUrl(live.room, token), { method:'DELETE' });
-      live.room = null; liveSave();
+      live.room = null; live.hostKey = null; live.baseRev = 0; liveSave();
     }
   }catch(e){}
 }
-/* opening the app after a week away: retire the old room, and if still live, carry on in a new one */
+/* opening the app: reconnect, catch up on the other host's changes, renew a week-old room */
 async function resumeLive(){
   if(!live.on || !liveReady()) return;
+  if(isCohost()){
+    try{
+      const r = await fetch(roomUrl(live.room)); const room = r.ok ? await r.json() : null;
+      if(!room){ endCohost('The host stopped sharing this session.'); return; }
+      if(typeof room.t==='number' && room.t < Date.now() - WEEK){ endCohost('That live session expired.'); return; }
+      if((room.state && room.state.rev || 0) > (live.baseRev||0)) adoptRoom(room);
+    }catch(e){}
+    subscribeHost(); renderStatus(); return;
+  }
   const before = live.room;
   await retireIfExpired();
-  if(!live.room){ live.room = newRoomId(); liveSave(); if(before) toast('Your live link was a week old, so it was renewed. Show the new QR.'); }
-  pushLive(); renderStatus();
+  if(!live.room){
+    live.room = newRoomId(); live.baseRev = 0; liveSave();
+    if(before) toast('Your live link was a week old, so it was renewed. Show the new QR.');
+    pushLive();
+  } else await syncBaseRev();
+  subscribeHost(); renderStatus();
 }
 
 function normalizeState(s){
@@ -1271,7 +1499,7 @@ function renderViewer(){
     </div>
     ${state.screen==='summary' ? '<div class="card" style="text-align:center"><h3>🏁 Session wrapped</h3></div>' : ''}
     ${courtsHtml}
-    <div class="card"><h3 style="margin-bottom:6px">🏓 Up next</h3>${queueHtml}</div>
+    <div class="card"><h3 style="margin-bottom:6px">🏓 Up next</h3>${queueHtml}${(()=>{ const away = state.players.filter(p=>p.status==='away').map(p=>esc(p.name)).sort(); return away.length ? `<p class="hint">👋 Not here yet: ${away.join(', ')}. Here already? Tell the host.</p>` : ''; })()}</div>
     <div class="card"><h3 style="margin-bottom:8px">Standings</h3><table>${standings||''}</table></div>
     <div class="card"><h3 style="margin-bottom:8px">Matches</h3>${matchListHtml()||'<p class="subtle">No matches yet.</p>'}</div>`;
 }
@@ -1353,23 +1581,36 @@ function openPartnerModal(pid){
 }
 
 /* ---------- QR modal ---------- */
-function openQrModal(){
-  const url = liveLink();
+async function openQrModal(mode){
+  const cohostMode = mode==='cohost' && !isCohost();
+  if(cohostMode && !(await ensureHostKey())){ toast("Couldn't set up co-hosting. Check your signal and try again."); return; }
+  const url = cohostMode ? cohostLink() : liveLink();
+  const tabs = isCohost() ? '' : `
+        <div class="row" style="margin:4px 0 12px">
+          <button class="btn grow ${cohostMode?'ghost':'primary'}" data-action="live-qr" data-mode="players">Players</button>
+          <button class="btn grow ${cohostMode?'primary':'ghost'}" data-action="live-qr" data-mode="cohost">Co-host</button>
+        </div>`;
   $modalHost.innerHTML = `
     <div class="overlay" data-action="modal-bg">
       <div class="modal" style="text-align:center">
-        <h3>Scan to follow along</h3>
-        <p class="subtle" style="margin:6px 0 12px">Point a phone camera here. Courts, queue and standings open right in their browser, nothing to type or install.</p>
-        <div id="qrBox" style="background:#fff; border-radius:12px; padding:14px; display:inline-flex; align-items:center; justify-content:center; min-width:248px; min-height:248px"><span style="color:#888; font-size:13px">Generating…</span></div>
+        ${tabs}
+        <h3>${cohostMode ? 'Scan to co-host' : 'Scan to follow along'}</h3>
+        <p class="subtle" style="margin:6px 0 12px">${cohostMode
+          ? 'Scan on another device you run the session from, like your iPad. <b>It can change everything</b>, so don\'t show this one to players.'
+          : 'Point a phone camera here. Courts, queue and standings open right in their browser, nothing to type or install.'}</p>
+        <div id="qrBox" style="background:#fff; border-radius:12px; padding:14px; display:inline-flex; align-items:center; justify-content:center; min-width:248px; min-height:248px${cohostMode ? '; outline:3px solid var(--danger); outline-offset:3px' : ''}"><span style="color:#888; font-size:13px">Generating…</span></div>
         <div class="row" style="margin-top:14px">
-          <button class="btn grow" data-action="live-copy">📋 Copy link</button>
+          <button class="btn grow" data-action="${cohostMode ? 'live-copy-cohost' : 'live-copy'}">📋 Copy link</button>
           <button class="btn ghost grow" data-action="modal-close">Close</button>
         </div>
       </div>
     </div>`;
   const box = document.getElementById('qrBox');
   const make = ()=>{ box.innerHTML=''; new QRCode(box, {text:url, width:220, height:220, correctLevel:QRCode.CorrectLevel.M}); };
-  const fallback = ()=>{ box.innerHTML = '<img width="220" height="220" alt="QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(url)+'">'; };
+  // the outside QR service is only ever given the public players' link, never the co-host key
+  const fallback = ()=>{ box.innerHTML = cohostMode
+    ? '<span style="color:#555; font-size:13px; max-width:200px">QR unavailable offline. Use “Copy link” and open it on the other device.</span>'
+    : '<img width="220" height="220" alt="QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(url)+'">'; };
   if(window.QRCode){ make(); return; }
   const s = document.createElement('script');
   s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
@@ -1378,8 +1619,13 @@ function openQrModal(){
 }
 
 /* ---------- finish modal ---------- */
+/* what the court looked like when the score sheet opened: if a co-host finishes or changes that
+   court meanwhile, the result isn't recorded against the wrong players */
+let finishSnap = null;
+const courtKey = cid => { const c = state.courts.find(x=>x.id===cid); return c && c.teams ? JSON.stringify(c.teams) : null; };
 function openFinishModal(courtId){
   const c = state.courts.find(x=>x.id===courtId); if(!c||!c.teams) return;
+  finishSnap = { cid:courtId, key:courtKey(courtId) };
   const an = c.teams[0].filter(Boolean).map(nameOf).join(' & '), bn = c.teams[1].filter(Boolean).map(nameOf).join(' & ');
   $modalHost.innerHTML = `
     <div class="overlay" data-action="modal-bg">
@@ -1455,8 +1701,29 @@ function doAction(action, el){
       toast(levelMatchOn() ? 'Grouping by level' : 'Ignoring levels'); return;
     case 'setup-start': {
       if(ui.setupNames.length<4){ toast('Need at least 4 players'); return; }
-      state = freshState(ui.setupNames, ui.setupCourts||1);
-      fillCourts(); save(); window.scrollTo(0,0); render(); return;
+      state = freshState(ui.setupNames, ui.setupCourts||1, checkInPref());
+      fillCourts(); save(); window.scrollTo(0,0); render();
+      if(checkInPref()) toast('Tap ✓ Here as players arrive');
+      return;
+    }
+    case 'setup-checkin':
+      try{ localStorage.setItem('pc-pref-checkin', checkInPref() ? '0' : '1'); }catch(e){}
+      renderSetup(); return;
+    case 'check-in': {
+      const p = byId(el.dataset.pid);
+      if(p && checkIn(p.id)){ save(); animatedRender(); toast(`${p.name} is here`); }
+      return;
+    }
+    case 'check-in-all': {
+      const away = state.players.filter(p=>p.status==='away');
+      if(!away.length) return;
+      if(!confirm(`Check in all ${away.length} remaining player${away.length===1?'':'s'}?`)) return;
+      away.forEach(p=>checkIn(p.id)); save(); animatedRender(); toast('Everyone is checked in'); return;
+    }
+    case 'uncheck-in': {
+      const p = byId(el.dataset.pid);
+      if(p && uncheckIn(p.id)){ save(); animatedRender(); toast(`${p.name} moved back to "not here yet"`); }
+      return;
     }
     case 'setup-courts':
       ui.setupCourts = Math.max(1, Math.min(12, (ui.setupCourts||1) + (+el.dataset.d)));
@@ -1487,10 +1754,16 @@ function doAction(action, el){
         if(SA===SB){ toast('Scores are tied. Fix the score or clear it.'); return; }
         if((SA>SB ? 0 : 1)!==w){ toast("That score says the other team won. Check the score."); return; }
       }
+      const changed = ()=> !finishSnap || finishSnap.cid!==cid || finishSnap.key!==courtKey(cid);
+      if(changed()){ closeModal(); toast('This court changed on the other host\'s device. Check it and finish again if needed.'); return; }
       closeModal();
       finishing.add(cid);
       const teamEl = document.querySelector(`.team[data-court="${cid}"][data-team="${w}"]`);
-      const go = ()=>{ finishMatch(cid, w, SA, SB); finishing.delete(cid); save(); animatedRender(); };
+      const go = ()=>{
+        finishing.delete(cid);
+        if(changed()){ render(); toast('This court changed on the other host\'s device. Check it and finish again if needed.'); return; }
+        finishSnap = null; finishMatch(cid, w, SA, SB); save(); animatedRender();
+      };
       if(teamEl && !REDUCED){ teamEl.classList.add('winflash'); setTimeout(go, 300); } else go();
       return;
     }
@@ -1557,10 +1830,21 @@ function doAction(action, el){
       el.disabled = true;
       goLive().then(ok=>{ render(); if(ok){ toast("You're live"); openQrModal(); } });
       return;
-    case 'live-stop':
-      stopLive().then(()=>{ render(); toast('Live sharing stopped'); });
+    case 'live-stop': {
+      const wasCohost = isCohost();
+      if(!wasCohost && !confirm('Stop sharing for everyone? Players and co-host devices will lose the live view.')) return;
+      stopLive().then(()=>{ render(); toast(wasCohost ? 'You left co-hosting. Your copy stays on this device.' : 'Live sharing stopped'); });
       return;
-    case 'live-qr': openQrModal(); return;
+    }
+    case 'live-qr': openQrModal(el && el.dataset.mode); return;
+    case 'live-cohost': openQrModal('cohost'); return;
+    case 'live-reset-cohosts':
+      if(!confirm('Remove all co-host devices? Old co-host QR codes stop working; show the new one to add a device again.')) return;
+      resetCohosts().then(ok=>toast(ok ? 'Co-hosts removed. A new co-host QR is ready.' : "Couldn't reach the server. Try again."));
+      return;
+    case 'live-copy-cohost':
+      if(navigator.clipboard){ navigator.clipboard.writeText(cohostLink()).then(()=>toast('Co-host link copied. Only share it with another host.')); }
+      return;
     case 'live-share': {
       const url = liveLink();
       if(navigator.share){ navigator.share({title:'PaddleCue — live', url}).catch(()=>{}); }
@@ -1769,6 +2053,11 @@ if('serviceWorker' in navigator && location.protocol.startsWith('http')){
 const vh = new URLSearchParams(location.hash.slice(1));
 if(vh.get('r')){
   startViewer(vh.get('r'));
+} else if(vh.get('h') && vh.get('k')){ // opened from the co-host QR: this device becomes a second host
+  load();
+  if(!state){ state={screen:'setup'}; }
+  render();
+  joinCohost(vh.get('h'), vh.get('k'));
 } else if(vh.get('live')){ // a link from before rooms existed
   IS_VIEWER = true; $tabs.classList.add('hidden');
   viewerMessage('This live link is from an older version.<br><span class="subtle">Ask the host to show their QR code again.</span>');
