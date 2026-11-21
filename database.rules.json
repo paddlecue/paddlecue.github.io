@@ -1,5 +1,5 @@
 {
-  // PaddleCue Realtime Database rules.
+  // DinkleQue Realtime Database rules.
   // Paste into Firebase console > Realtime Database > Rules, then Publish.
   //
   // rooms/<roomId> = { owner: <anonymous uid>, t: <server time of last update>, state: <session> }

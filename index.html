@@ -3,14 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<title>PaddleCue — Open Play Queue</title>
+<title>DinkleQue — Open Play Queue</title>
 <link rel="manifest" href="manifest.webmanifest">
 <!-- the app is always dark, so the browser bar matches the header in both schemes -->
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#10150f">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#10150f">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f5efe3">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
@@ -21,10 +20,17 @@
      and motion limited to transform/opacity with two shared curves.
      ============================================================ */
   :root{
-    --bg:#10150f; --card:#1b231a; --card2:#242f22; --line:#38463a;
-    --ink:#f1f5ee; --dim:#a9b6a2; --accent:#c3f53c; --accent-ink:#1a2404;
-    --teamA:#5fd4f5; --teamB:#ffb85c; --danger:#ff7a6e; --win:#8de08a;
-    --lv1:#8de08a; --lv2:#f2d65e; --lv3:#ff8fb1;
+    /* DinkleBerries: eggshell white + purple. One light theme for everyone, tuned for outdoor sun
+       (text and accents meet WCAG contrast on the eggshell background). */
+    --bg:#f5efe3; --card:#fffcf6; --card2:#efe7d8; --line:#d9cdb9;
+    --ink:#241a31; --dim:#6a5f75; --accent:#6a3dc8; --accent-ink:#ffffff;
+    --teamA:#0b7aa0; --teamB:#b45f06; --danger:#c0392b; --win:#6a3dc8;
+    --lv1:#7a52d6; --lv2:#8f6c00; --lv3:#c2185b;
+    --nav-bg:#fbf6ec; --lift-bg:#e8dffb; --scrim:rgba(36,26,49,.45);
+    --accent-soft:rgba(106,61,200,.08); --accent-faint:rgba(106,61,200,.05); --accent-line:rgba(106,61,200,.30);
+    --teamA-soft:rgba(11,122,160,.07); --teamA-line:rgba(11,122,160,.40); --teamA-btn:rgba(11,122,160,.12);
+    --teamB-soft:rgba(180,95,6,.07); --teamB-line:rgba(180,95,6,.40); --teamB-btn:rgba(180,95,6,.12);
+    --danger-soft:rgba(192,57,43,.08); --danger-fill:rgba(192,57,43,.18);
     --tap:44px;
     --ease-out:cubic-bezier(.23,1,.32,1);       /* enter / exit / press */
     --ease-in-out:cubic-bezier(.77,0,.175,1);   /* things moving on screen */
@@ -69,10 +75,10 @@
   header.top h1 span{color:var(--accent);}
   .status{font-size:13px; color:var(--dim); text-align:right;}
   .status{display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
-  .livebtn{min-height:36px; padding:0 12px; border-radius:99px; border:1px solid var(--accent); background:rgba(195,245,60,.1); color:var(--accent); font-size:13px; font-weight:700;}
-  .livebtn.bad{border-color:var(--danger); color:var(--danger); background:rgba(255,122,110,.1);}
+  .livebtn{min-height:36px; padding:0 12px; border-radius:99px; border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent); font-size:13px; font-weight:700;}
+  .livebtn.bad{border-color:var(--danger); color:var(--danger); background:var(--danger-soft);}
   /* bottom tabs */
-  nav.tabs{position:fixed; bottom:0; left:0; right:0; background:#151b14; border-top:1px solid var(--line); display:flex; z-index:20;
+  nav.tabs{position:fixed; bottom:0; left:0; right:0; background:var(--nav-bg); border-top:1px solid var(--line); display:flex; z-index:20;
     padding:0 max(8px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(8px, env(safe-area-inset-left, 0px));}
   nav.tabs button{flex:1; background:none; color:var(--dim); height:var(--nav-h); font-size:12px; font-weight:600; border-radius:0;
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;}
@@ -90,8 +96,8 @@
   .badge.stage{color:var(--teamB); border-color:var(--teamB);}
   .teams{display:flex; align-items:stretch; gap:6px;}
   .team{flex:1; min-width:0; border-radius:14px; padding:8px; display:flex; flex-direction:column; gap:6px; position:relative;}
-  .team.a{background:rgba(95,212,245,.08); border:1px solid rgba(95,212,245,.4);}
-  .team.b{background:rgba(255,184,92,.08); border:1px solid rgba(255,184,92,.4);}
+  .team.a{background:var(--teamA-soft); border:1px solid var(--teamA-line);}
+  .team.b{background:var(--teamB-soft); border:1px solid var(--teamB-line);}
   .team .tname{font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; text-align:center;}
   .team.a .tname{color:var(--teamA);} .team.b .tname{color:var(--teamB);}
   .vs{align-self:center; color:var(--dim); font-size:12px; font-weight:700;}
@@ -105,9 +111,9 @@
      1. pressing: the card sinks for exactly the hold time (a built-in countdown)
      2. lifting:  it pops up with a bright outline = "you can move it now" */
   .chip.pressing, .qitem.pressing{transform:scale(.95); opacity:.8; transition:transform 220ms linear, opacity 220ms linear;}
-  .chip.lifting{transform:scale(1.06); opacity:1; outline:3px solid var(--accent); outline-offset:2px; border-color:var(--accent); background:#2e3b20;
+  .chip.lifting{transform:scale(1.06); opacity:1; outline:3px solid var(--accent); outline-offset:2px; border-color:var(--accent); background:var(--lift-bg);
     transition:transform 180ms var(--ease-out), opacity 120ms ease;}
-  .qitem.lifting{transform:scale(1.02); opacity:1; outline:3px solid var(--accent); outline-offset:1px; background:#2e3b20; transition:transform 180ms var(--ease-out), opacity 120ms ease;}
+  .qitem.lifting{transform:scale(1.02); opacity:1; outline:3px solid var(--accent); outline-offset:1px; background:var(--lift-bg); transition:transform 180ms var(--ease-out), opacity 120ms ease;}
   .qitem{transition:transform 160ms var(--ease-out);}
   /* the courts and queue rows are controls: no text selection or callouts on a long press
      (kept off containers with inputs, where iOS would block typing) */
@@ -116,13 +122,12 @@
   .chip.vacant{border-style:dashed; background:transparent; color:var(--dim); font-weight:500; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center;}
   .dropzone{outline:2px dashed var(--accent); outline-offset:2px; border-radius:16px;}
   .dragghost{position:fixed; left:0; top:0; z-index:99; pointer-events:none; width:150px; background:var(--card2); border:1px solid var(--accent); border-radius:12px; padding:10px; text-align:center; font-weight:700;
-    filter:drop-shadow(0 8px 18px rgba(0,0,0,.5)); will-change:transform;}
+    filter:drop-shadow(0 8px 18px rgba(36,26,49,.25)); will-change:transform;}
   .dragghost.benchhint{border-color:var(--danger); color:var(--danger);}
   .court .actions{display:flex; gap:8px; margin-top:12px;}
   .court .actions .btn{flex:1; min-height:48px;}
   .court .tip{font-size:12px; color:var(--dim); text-align:center; margin-top:8px;}
   .empty-court{color:var(--dim); font-size:14px; text-align:center; padding:10px 0;}
-  .timer{font-variant-numeric:tabular-nums; font-weight:700;}
   /* queue */
   .qitem{display:flex; align-items:center; gap:8px; padding:8px 8px 8px 10px; background:var(--card2); border:1px solid var(--line); border-radius:14px; margin-bottom:8px;}
   .qitem:last-child{margin-bottom:0;}
@@ -133,10 +138,10 @@
   .qline{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
   .qline b{font-size:16px; overflow-wrap:anywhere;}
   .meta{color:var(--dim); font-size:13px; margin-top:2px;}
-  .upnext{border:1.5px solid var(--accent); border-radius:16px; padding:8px; margin:12px 0 4px; background:rgba(195,245,60,.06);}
+  .upnext{border:1.5px solid var(--accent); border-radius:16px; padding:8px; margin:12px 0 4px; background:var(--accent-faint);}
   .upnext .label{font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--accent); margin:2px 4px 8px;}
   .upnext .label .subtle{font-size:12px; font-weight:500; text-transform:none; letter-spacing:0;}
-  .upnext .qitem{border-color:rgba(195,245,60,.35);}
+  .upnext .qitem{border-color:var(--accent-line);}
   .waitlabel{font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--dim); margin:14px 4px 8px;}
   .quickadd{display:flex; gap:8px; margin-top:12px;}
   .quickadd input{flex:1;}
@@ -192,7 +197,7 @@
   .toggle .sw::after{content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:var(--ink); transition:transform 160ms var(--ease-out), background-color 160ms ease;}
   .toggle.on .sw{background:var(--accent);} .toggle.on .sw::after{transform:translateX(18px); background:var(--accent-ink);}
   /* modal (bottom sheet on phones) */
-  .overlay{position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:flex-end; justify-content:center; z-index:50; animation:fade 180ms ease;}
+  .overlay{position:fixed; inset:0; background:var(--scrim); display:flex; align-items:flex-end; justify-content:center; z-index:50; animation:fade 180ms ease;}
   .modal{background:var(--card); border:1px solid var(--line); border-radius:20px 20px 0 0; padding:20px 16px calc(16px + env(safe-area-inset-bottom, 0px)); width:100%; max-width:480px;
     max-height:85vh; max-height:85dvh; overflow:auto; overscroll-behavior:contain; animation:sheetup 260ms var(--ease-drawer);}
   /* exit is quicker than entry: the system response snaps */
@@ -203,26 +208,26 @@
   .modal h3{margin-bottom:4px;}
   .fteams{display:flex; gap:10px; margin:16px 0 12px;}
   .fteam{flex:1; min-width:0; border-radius:14px; padding:10px; display:flex; flex-direction:column; gap:8px; transition:opacity 150ms ease;}
-  .fteam.a{background:rgba(95,212,245,.08); border:1px solid rgba(95,212,245,.45);}
-  .fteam.b{background:rgba(255,184,92,.08); border:1px solid rgba(255,184,92,.45);}
+  .fteam.a{background:var(--teamA-soft); border:1px solid var(--teamA-line);}
+  .fteam.b{background:var(--teamB-soft); border:1px solid var(--teamB-line);}
   .fteam .names{font-weight:700; text-align:center; min-height:40px; display:flex; align-items:center; justify-content:center; overflow-wrap:anywhere;}
   .fteam input{width:100%; text-align:center; font-size:26px; font-weight:700; min-height:56px;}
   .fteam .btn{min-height:52px; font-weight:700;}
-  .fteam.a .btn{background:rgba(95,212,245,.18); color:var(--teamA);}
-  .fteam.b .btn{background:rgba(255,184,92,.18); color:var(--teamB);}
+  .fteam.a .btn{background:var(--teamA-btn); color:var(--teamA);}
+  .fteam.b .btn{background:var(--teamB-btn); color:var(--teamB);}
   .fteam.lead .btn{outline:2px solid currentColor;}
   .fteam.trail{opacity:.55;}
   /* toast */
   .toast{position:fixed; left:0; right:0; margin:0 auto; width:fit-content; max-width:calc(100% - 32px); bottom:calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 12px);
     background:var(--card2); border:1px solid var(--line); color:var(--ink); padding:12px 18px; border-radius:16px; font-size:14px; text-align:center; z-index:60;
-    filter:drop-shadow(0 6px 16px rgba(0,0,0,.4)); pointer-events:none;
+    filter:drop-shadow(0 6px 16px rgba(36,26,49,.18)); pointer-events:none;
     /* transitions, not keyframes: a new toast mid-animation retargets instead of restarting */
     opacity:0; transform:translateY(8px); transition:opacity 200ms var(--ease-out), transform 200ms var(--ease-out);}
   .toast.show{opacity:1; transform:none;}
   /* finish session */
   .holdbtn{position:relative; overflow:hidden; width:100%; min-height:52px; background:var(--card2); color:var(--danger); border:1px solid var(--danger); border-radius:12px; font-weight:700; touch-action:none;}
   .holdbtn:active{transform:none;}
-  .holdbtn .fill{position:absolute; inset:0; background:rgba(255,122,110,.28); transform:scaleX(0); transform-origin:left center; transition:transform 150ms var(--ease-out);}
+  .holdbtn .fill{position:absolute; inset:0; background:var(--danger-fill); transform:scaleX(0); transform-origin:left center; transition:transform 150ms var(--ease-out);}
   .holdbtn.arming .fill{transform:scaleX(1); transition:transform 1.2s linear;}
   .holdbtn .txt{position:relative;}
   /* motion */
@@ -249,7 +254,7 @@
 </head>
 <body>
 <header class="top">
-  <h1><img src="icon-192.png" alt="" width="26" height="26" style="vertical-align:-5px; border-radius:7px; margin-right:6px">Paddle<span>Cue</span></h1>
+  <h1><img src="icon-192.png" alt="" width="26" height="26" style="vertical-align:-5px; border-radius:7px; margin-right:6px">Dinkle<span>Que</span></h1>
   <div class="status" id="status"></div>
 </header>
 <div class="wrap" id="app"></div>
@@ -506,8 +511,8 @@ function fillCourts(){
     if(!pick) continue;
     pick.players.forEach(p=>{ p.status='playing'; p.pin=null; });
     c.teams = pick.teams;
-    c.phase = 'staging';
-    c.startedAt = null;
+    c.phase = 'playing';        // no separate "start" step: the game is on as soon as the court fills
+    c.startedAt = Date.now();
   }
 }
 
@@ -557,10 +562,13 @@ function swapTeammates(courtId){
   return false;
 }
 
+/* Courts go straight to playing now; this only converts a court left in the old
+   "setting teams" stage (older saved sessions) and reports whether it's ready. */
 function startMatch(courtId){
   const c = state.courts.find(x=>x.id===courtId);
-  if(!c || c.phase!=='staging' || courtPlayers(c).length<4) return false;
-  c.phase='playing'; c.startedAt=Date.now(); return true;
+  if(!c || !c.teams) return false;
+  if(c.phase==='staging'){ c.phase='playing'; c.startedAt=Date.now(); }
+  return courtPlayers(c).length===4;
 }
 
 /* Find where a player currently sits on any court: {court, ti, pi} or null */
@@ -605,9 +613,8 @@ function removeFromCourt(pid){
   slot.court.teams[slot.ti][slot.pi] = '';
   p.status='queued'; p.queuedAt=(++state.tick); p.pin=null;
   const c = slot.court;
-  /* Court is held open (even fully empty) until Shuffle fills it or players
-     are dropped in. A playing court emptied mid-match falls back to staging. */
-  if(courtPlayers(c).length===0 && c.phase==='playing'){ c.phase='staging'; c.startedAt=null; }
+  /* The court is held open (even fully empty) until "Fill from queue" fills it or
+     players are dropped in; Finish stays disabled until all four slots are filled. */
   return true;
 }
 /* Put a player (from queue or another slot) into a specific open slot */
@@ -724,7 +731,7 @@ function save(){
 }
 function sessionAsText(){
   const L=[];
-  L.push('PADDLECUE — OPEN PLAY SESSION LOG');
+  L.push('DINKLEQUE — OPEN PLAY SESSION LOG');
   L.push('Exported: '+new Date().toLocaleString());
   L.push('');
   L.push('STANDINGS');
@@ -915,6 +922,7 @@ function renderPlay(){
       body = `<div class="empty-court">Court open · ${waiting<4? `waiting for players (${waiting} of 4)` : 'filling…'}</div>`;
     } else {
       const full = courtPlayers(c).length===4;
+      const fresh = !c.startedAt || Date.now() - c.startedAt < 3*60*1000; // the swap tip only while pairs are still being sorted out
       body = `
         <div class="teams">
           <div class="team a" data-court="${c.id}" data-team="0"><div class="tname">Team A</div>${c.teams[0].map((id,pi)=>slotHtml(c,0,pi)).join('')}</div>
@@ -922,16 +930,13 @@ function renderPlay(){
           <div class="team b" data-court="${c.id}" data-team="1"><div class="tname">Team B</div>${c.teams[1].map((id,pi)=>slotHtml(c,1,pi)).join('')}</div>
         </div>
         <div class="actions">
-          ${c.phase==='staging'
-            ? (full ? `<button class="btn" data-action="swap-teams" data-court="${c.id}" aria-label="Swap teammates">⇄ Swap pairs</button>`
-                    : `<button class="btn" data-action="shuffle" data-court="${c.id}">🎲 Fill from queue</button>`)
-              + `<button class="btn primary" data-action="start" data-court="${c.id}" ${full?'':'disabled'}>Start match</button>`
-            : `<button class="btn primary" data-action="finish" data-court="${c.id}">🏁 Finish match</button>`}
+          ${full ? `<button class="btn" data-action="swap-teams" data-court="${c.id}" aria-label="Swap teammates">⇄ Swap pairs</button>`
+                 : `<button class="btn" data-action="shuffle" data-court="${c.id}">🎲 Fill from queue</button>`}
+          <button class="btn primary" data-action="finish" data-court="${c.id}" ${full?'':'disabled'}>🏁 Finish match</button>
         </div>
-        ${c.phase==='staging' ? '<p class="tip">Tap two names to swap · hold a name to drag it</p>' : ''}`;
+        ${fresh ? '<p class="tip">Tap two names to swap · hold a name to drag it</p>' : ''}`;
     }
-    const badge = c.phase==='playing' ? `<span class="badge play">● <span class="timer" data-start="${c.startedAt}">0:00</span></span>`
-                : c.phase==='staging' ? `<span class="badge stage">setting teams</span>`
+    const badge = c.phase!=='idle' ? `<span class="badge play">● playing</span>`
                 : `<span class="badge">open</span>`;
     return `<div class="court"><div class="head"><b>Court ${c.id}</b>${badge}</div><div class="body">${body}</div></div>`;
   }).join('');
@@ -1210,7 +1215,11 @@ function normalizeState(s){
     p.level = p.level||1; // untagged → Novice
     if(p.pin!=null && typeof p.pin!=='object') p.pin = null; // old numeric pins
   });
-  s.courts.forEach(c=>{ if(c.teams && (!c.teams[0] || !c.teams[1])) c.teams = null; });
+  s.courts.forEach(c=>{
+    if(c.teams && (!c.teams[0] || !c.teams[1])) c.teams = null;
+    if(c.phase==='staging'){ c.phase = 'playing'; c.startedAt = c.startedAt || Date.now(); } // the old "setting teams" stage is gone
+    if(c.phase==='playing' && !c.teams){ c.phase = 'idle'; c.startedAt = null; }
+  });
   return s;
 }
 
@@ -1253,8 +1262,8 @@ function renderViewer(){
         <div class="vs">VS</div>
         <div class="team b"><div class="tname">Team B</div>${c.teams[1].map(vchip).join('')}</div>
       </div>`;
-    const badge = c.phase==='playing' ? `<span class="badge play">● playing <span class="timer" data-start="${c.startedAt}">0:00</span></span>`
-                : c.phase==='staging' ? '<span class="badge stage">setting teams</span>' : '<span class="badge">open</span>';
+    const badge = c.phase!=='idle' ? `<span class="badge play">● playing</span>`
+                : '<span class="badge">open</span>';
     return `<div class="court"><div class="head"><b>Court ${c.id}</b>${badge}</div><div class="body">${body}</div></div>`;
   }).join('');
   const queueHtml = queueSectionsHtml((p,i,isNext)=>`
@@ -1284,7 +1293,7 @@ function rankedPlayers(){
 function shareText(){
   const d = new Date(state.startedAt||Date.now());
   const rank = rankedPlayers(), medals=['🥇','🥈','🥉'], L=[];
-  L.push(`🏓 PaddleCue open play — ${d.toLocaleDateString(undefined,{month:'short', day:'numeric'})}`);
+  L.push(`🫐 DinkleQue open play — ${d.toLocaleDateString(undefined,{month:'short', day:'numeric'})}`);
   L.push(`${rank.length} players · ${state.matches.length} matches`);
   L.push('');
   L.push('Standings:');
@@ -1467,10 +1476,6 @@ function doAction(action, el){
       if(swapTeammates(+el.dataset.court)){ save(); animatedRender(); }
       else toast('🔗 Fixed partners stay together');
       return;
-    case 'start':
-      if(startMatch(+el.dataset.court)){ save(); render(); }
-      else toast('Fill all 4 slots first');
-      return;
     case 'fill-vacant': {
       if(!ui.selected){ toast('Tap a player first, then the open slot'); return; }
       if(placeVacant(ui.selected, +el.dataset.court, +el.dataset.team, +el.dataset.pos)){
@@ -1478,7 +1483,12 @@ function doAction(action, el){
       } else { toast("Couldn't place there"); }
       return;
     }
-    case 'finish': if(!finishing.has(+el.dataset.court)) openFinishModal(+el.dataset.court); return;
+    case 'finish': {
+      const fc = state.courts.find(x=>x.id===+el.dataset.court);
+      if(!fc || courtPlayers(fc).length<4){ toast('Fill all 4 slots first'); return; }
+      if(!finishing.has(fc.id)) openFinishModal(fc.id);
+      return;
+    }
     case 'win': {
       const sa = document.getElementById('sa').value, sb = document.getElementById('sb').value;
       const cid = +el.dataset.court, w = +el.dataset.w;
@@ -1529,10 +1539,10 @@ function doAction(action, el){
     }
     case 'undo': if(undo()){ save(); animatedRender(); toast('Last result undone'); } return;
     case 'export-json':
-      download('paddlecue-session-'+stamp()+'.json', JSON.stringify({...state, undoStack:[]}, null, 1), 'application/json');
+      download('dinkleque-session-'+stamp()+'.json', JSON.stringify({...state, undoStack:[]}, null, 1), 'application/json');
       toast('Backup downloaded'); return;
     case 'export-txt':
-      download('paddlecue-log-'+stamp()+'.txt', sessionAsText());
+      download('dinkleque-log-'+stamp()+'.txt', sessionAsText());
       toast('Log downloaded'); return;
     case 'restore': {
       const fi = document.getElementById('restoreFile');
@@ -1563,7 +1573,7 @@ function doAction(action, el){
     case 'live-qr': openQrModal(); return;
     case 'live-share': {
       const url = liveLink();
-      if(navigator.share){ navigator.share({title:'PaddleCue — live', url}).catch(()=>{}); }
+      if(navigator.share){ navigator.share({title:'DinkleQue — live', url}).catch(()=>{}); }
       else if(navigator.clipboard){ navigator.clipboard.writeText(url).then(()=>toast('Link copied')); }
       return;
     }
@@ -1574,7 +1584,7 @@ function doAction(action, el){
     case 'resume-session': state.screen='main'; save(); render(); return;
     case 'share-summary': {
       const txt = shareText();
-      if(navigator.share){ navigator.share({title:'PaddleCue open play', text:txt}).catch(()=>{}); }
+      if(navigator.share){ navigator.share({title:'DinkleQue open play', text:txt}).catch(()=>{}); }
       else if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>toast('Copied — paste it to the group chat')); }
       return;
     }
@@ -1754,13 +1764,6 @@ document.addEventListener('pointerup', e=>{
   }
 });
 
-/* ---------- timers ---------- */
-setInterval(()=>{
-  document.querySelectorAll('.timer[data-start]').forEach(t=>{
-    const s = Math.max(0, Math.floor((Date.now()-(+t.dataset.start))/1000));
-    t.textContent = Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
-  });
-}, 1000);
 
 /* ---------- boot ---------- */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){

@@ -1,13 +1,13 @@
 {
-  "name": "PaddleCue — Open Play Queue",
-  "short_name": "PaddleCue",
+  "name": "DinkleQue — Open Play Queue",
+  "short_name": "DinkleQue",
   "description": "Your cue to play: a fair, mixing rotation for 2v2 open play",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#10150f",
-  "theme_color": "#10150f",
+  "background_color": "#f5efe3",
+  "theme_color": "#f5efe3",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
