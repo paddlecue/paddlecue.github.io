@@ -880,7 +880,7 @@ function renderSetup(){
         <span class="sw"></span>
       </button>
       <button class="btn primary big" style="width:100%; margin-top:12px" data-action="setup-start" ${n<4?'disabled':''}>${checkInPref() ? 'Start & check players in' : 'Start open play'}${n? ` · ${n} players` : ''}</button>
-      <p class="hint">${n<4 ? `Add ${4-n} more player${4-n===1?'':'s'} to start.` : checkInPref() ? 'Nobody goes on court until four are checked in.' : 'Anyone beyond 4 per court waits in the paddle queue.'}</p>
+      <p class="hint">${n<4 ? `Add ${4-n} more player${4-n===1?'':'s'} to start.` : checkInPref() ? 'A court starts as soon as four players are checked in; the rest join as they arrive.' : 'Anyone beyond 4 per court waits in the paddle queue.'}</p>
     </div>
     <div class="card">
       <div class="row" style="justify-content:space-between">
@@ -1002,8 +1002,8 @@ function renderPlay(){
       <div class="arrivals">${away.map(p=>`<button class="arrive" data-action="check-in" data-pid="${p.id}" aria-label="Check in ${esc(p.name)}"><b>${esc(p.name)}</b><span class="go">✓ Here</span></button>`).join('')}</div>
       ${away.length>1 ? `<button class="btn ghost" style="width:100%; margin-top:10px" data-action="check-in-all">Everyone's here</button>` : ''}
     </div>` : '';
-  // before the first game, arrivals are what matters most, so they go on top
-  $app.innerHTML = (state.matches.length ? courtsHtml + awayHtml : awayHtml + courtsHtml) + `
+  // arrivals sit at the bottom: play starts as soon as four are in, nobody waits for everyone
+  $app.innerHTML = courtsHtml + `
     <div class="card" id="queueCard">
       <div class="row" style="justify-content:space-between"><h3>🏓 Paddle queue</h3><span class="subtle">${waitingCount} waiting</span></div>
       ${queueHtml}
@@ -1022,7 +1022,7 @@ function renderPlay(){
           <li>🔗 sets a fixed partner (they always play together). 💤 takes a break.</li>
         </ul>
       </details>
-    </div>`;
+    </div>` + awayHtml;
   document.getElementById('quickName').addEventListener('keydown', e=>{ if(e.key==='Enter') doAction('add-player', e.target.nextElementSibling); });
   document.querySelector('details.help').addEventListener('toggle', e=>{ ui.helpOpen = e.target.open; });
 }
