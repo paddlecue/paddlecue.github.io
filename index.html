@@ -138,6 +138,7 @@
   .qitem:last-child{margin-bottom:0;}
   .qpos{width:26px; height:26px; border-radius:50%; background:var(--card); color:var(--dim); font-size:13px; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0;}
   .qitem.next .qpos{background:var(--accent); color:var(--accent-ink);}
+  .qitem.sel{outline:3px solid var(--accent); outline-offset:1px; background:var(--lift-bg);} /* picked for a swap, same as on court */
   .qmain{flex:1; min-width:0; padding:4px 0;}
   .qmain[data-chip]{touch-action:pan-y; cursor:grab; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;}
   .qline{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
@@ -516,18 +517,29 @@ function teamsFor(ids){
   return randomTeams(ids);
 }
 
-/* Fill any idle court with the best-scoring four from the queue */
+/* While names entered ahead of time are still arriving and no game has been played,
+   open courts wait for the host's "Fill court" tap instead of grabbing the first four
+   through the door, so the matchmaker can group levels from a bigger crowd. The hold
+   lifts by itself once everyone is checked in or the first game finishes. */
+function holdingCourts(){
+  return state.matches.length===0 && state.players.some(p=>p.status==='away');
+}
+/* Put the best-scoring four from the queue on one idle court */
+function fillCourt(c, pc){
+  if(!c || c.phase!=='idle') return false;
+  const pick = chooseFour(pc);
+  if(!pick) return false;
+  pick.players.forEach(p=>{ p.status='playing'; p.pin=null; });
+  c.teams = pick.teams;
+  c.phase = 'playing';        // no separate "start" step: the game is on as soon as the court fills
+  c.startedAt = Date.now();
+  return true;
+}
+/* Fill every idle court (unless courts are on hold for arrivals) */
 function fillCourts(){
+  if(holdingCourts()) return;
   const pc = pairCounts();
-  for(const c of state.courts){
-    if(c.phase!=='idle') continue;
-    const pick = chooseFour(pc);
-    if(!pick) continue;
-    pick.players.forEach(p=>{ p.status='playing'; p.pin=null; });
-    c.teams = pick.teams;
-    c.phase = 'playing';        // no separate "start" step: the game is on as soon as the court fills
-    c.startedAt = Date.now();
-  }
+  for(const c of state.courts) fillCourt(c, pc);
 }
 
 function takeFromQueue(n){
@@ -964,7 +976,12 @@ function renderPlay(){
     let body='';
     if(c.phase==='idle'){
       const waiting = queuedPlayers().length;
-      body = `<div class="empty-court">Court open · ${waiting<4? `waiting for players (${waiting} of 4)` : 'filling…'}</div>`;
+      if(waiting>=4 && holdingCourts()){
+        // players are still arriving: the host decides when this court starts
+        body = `<div class="empty-court">Court open · ${waiting} checked in</div>
+          <div class="actions"><button class="btn primary" data-action="fill-court" data-court="${c.id}">Fill court</button></div>
+          <p class="tip">Picks the best four by level and ranking from everyone checked in</p>`;
+      } else body = `<div class="empty-court">Court open · ${waiting<4? `waiting for players (${waiting} of 4)` : 'filling…'}</div>`;
     } else {
       const full = courtPlayers(c).length===4;
       const fresh = !c.startedAt || Date.now() - c.startedAt < 3*60*1000; // the swap tip only while pairs are still being sorted out
@@ -989,7 +1006,7 @@ function renderPlay(){
   const waitingCount = queuedPlayers().length;
   const onBreak = state.players.filter(p=>p.status==='break');
   const queueHtml = queueSectionsHtml((p,i,isNext)=>`
-    <div class="qitem ${isNext?'next':''}">
+    <div class="qitem ${isNext?'next':''} ${ui.selected===p.id?'sel':''}">
       <span class="qpos">${i+1}</span>
       <div class="qmain" data-chip="${p.id}">
         <div class="qline"><b>${esc(p.name)}</b>${lvBadge(p.level)}${p.pin!=null?'<span class="tag" title="Placed by hand">📌</span>':''}</div>
@@ -1823,6 +1840,14 @@ function doAction(action, el){
       renderSetup(); return;
     case 'tab': ui.tab = el.dataset.tab; ui.selected=null; render(); return;
     case 'shuffle': shuffleTeams(+el.dataset.court); save(); animatedRender(); return;
+    case 'fill-court': {
+      const c = state.courts.find(x=>x.id===+el.dataset.court);
+      if(!c || c.phase!=='idle') return;
+      pushUndo();
+      if(fillCourt(c, pairCounts())){ save(); animatedRender(); toast(`Court ${c.id} is on`); }
+      else { state.undoStack.pop(); toast('Need 4 checked-in players'); }
+      return;
+    }
     case 'swap-teams':
       if(swapTeammates(+el.dataset.court)){ save(); animatedRender(); }
       else toast('🔗 Fixed partners stay together');
@@ -2128,7 +2153,7 @@ document.addEventListener('pointerup', e=>{
     const pid = d.pid;
     if(ui.selected && ui.selected!==pid){ trySwap(ui.selected, pid); }
     else if(ui.selected===pid){ ui.selected=null; render(); }
-    else { ui.selected=pid; render(); toast(`${nameOf(pid)} selected · tap someone to swap`); }
+    else { ui.selected=pid; render(); toast(`${nameOf(pid)} selected · tap someone to swap, or tap again to cancel`); }
   }
 });
 
