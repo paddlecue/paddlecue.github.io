@@ -77,6 +77,7 @@
     padding:max(12px, env(safe-area-inset-top, 0px)) 16px 2px;}
   header.top h1{font-size:21px; letter-spacing:.3px; display:flex; align-items:center; white-space:nowrap;}
   header.top h1 span{color:var(--accent);}
+  header.top h1 .logo{width:40px; height:40px; margin-right:8px; flex:none;}
   .status{font-size:13px; color:var(--dim); text-align:right;}
   .status{display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
   .livebtn{min-height:36px; padding:0 12px; border-radius:99px; border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent); font-size:13px; font-weight:700;}
@@ -264,7 +265,7 @@
 </head>
 <body>
 <header class="top">
-  <h1><img src="icon-192.png" alt="" width="26" height="26" style="vertical-align:-5px; border-radius:7px; margin-right:6px">Dinkle<span>Que</span></h1>
+  <h1><img class="logo" src="logo.png" alt="" width="40" height="40">Dinkle<span>Que</span></h1>
   <div class="status" id="status"></div>
 </header>
 <div class="wrap" id="app"></div>
