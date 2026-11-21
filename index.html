@@ -793,10 +793,10 @@ function buzz(){ try{ if(navigator.vibrate && (!navigator.userActivation || navi
 function renderStatus(){
   const el = document.getElementById('status'); if(!el) return;
   if(IS_VIEWER || !state || state.screen!=='main'){ el.innerHTML=''; return; }
-  const n = state.players.filter(p=>p.status!=='out').length, c = state.courts.length;
+  const here = state.players.filter(p=>p.status!=='out' && p.status!=='away').length, away = state.players.filter(p=>p.status==='away').length, c = state.courts.length;
   // when live, the badge is the fastest way to the QR for someone who just arrived
   const badge = live.on && liveReady() ? `<button class="livebtn ${live.failing?'bad':''}" data-action="live-qr" aria-label="Show the live QR code">${isCohost() ? "● CO-HOST" : "● LIVE"}${live.failing?' ⚠':''} <span aria-hidden="true">▦</span></button>` : '';
-  el.innerHTML = `${badge}<span>${n} players · ${c} court${c===1?'':'s'}</span>`;
+  el.innerHTML = `${badge}<span>${here} ${away ? 'here' : 'players'}${away ? ` · ${away} to arrive` : ''} · ${c} court${c===1?'':'s'}</span>`;
 }
 function render(){
   if(IS_VIEWER){ if(state) renderViewer(); renderStatus(); return; }
@@ -1094,7 +1094,7 @@ function renderLog(){
     <div class="card">
       <h3>📡 Live sharing</h3>
       ${live.on && isCohost() ? `
-        <p class="subtle" style="margin:6px 0 10px"><b style="color:var(--accent)">You're co-hosting.</b> Changes here and on the other host's device sync both ways.${live.failing ? '<br><b style="color:var(--danger)">The last update didn\'t go through; it retries on your next change.</b>' : ''}</p>
+        <p class="subtle" style="margin:6px 0 10px"><b style="color:var(--accent)">You're co-hosting.</b> Changes here and on the other host's device sync both ways.${live.failing ? '<br><b style="color:var(--danger)">The last update didn\'t go through; it keeps retrying in the background.</b>' : ''}</p>
         <button class="btn primary big" style="width:100%" data-action="live-qr">🔳 Show players' QR</button>
         <div class="row" style="margin-top:8px">
           <button class="btn grow" data-action="live-share">📤 Share link</button>
@@ -1103,7 +1103,7 @@ function renderLog(){
         <button class="btn danger" style="width:100%; margin-top:8px" data-action="live-stop">Leave co-hosting</button>
         <p class="hint">Leaving keeps a copy of the session on this device; the other host carries on.</p>`
       : live.on ? `
-        <p class="subtle" style="margin:6px 0 10px">Players scan your QR and watch the courts, queue and standings on their own phone. Nothing to type or install.${live.failing ? '<br><b style="color:var(--danger)">The last update didn\'t go through; it retries on your next change.</b>' : ''}</p>
+        <p class="subtle" style="margin:6px 0 10px">Players scan your QR and watch the courts, queue and standings on their own phone. Nothing to type or install.${live.failing ? '<br><b style="color:var(--danger)">The last update didn\'t go through; it keeps retrying in the background.</b>' : ''}</p>
         <button class="btn primary big" style="width:100%" data-action="live-qr">🔳 Show QR code</button>
         <div class="row" style="margin-top:8px">
           <button class="btn grow" data-action="live-share">📤 Share link</button>
@@ -1209,7 +1209,7 @@ if(!live) live = { room:null, on:false };
 live.role = live.role || 'owner'; live.baseRev = live.baseRev || 0; live.failing = false;
 function liveSave(){
   try{ localStorage.setItem(LIVE_KEY, JSON.stringify({ room:live.room, on:live.on, role:live.role, owner:live.owner||null,
-    hostKey:live.hostKey||null, hostKeyRoom:live.hostKeyRoom||null, baseRev:live.baseRev||0 })); }catch(e){}
+    hostKey:live.hostKey||null, hostKeyRoom:live.hostKeyRoom||null, baseRev:live.baseRev||0, dirty:!!live.dirty })); }catch(e){}
 }
 function randomId(n){
   const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', b = crypto.getRandomValues(new Uint8Array(n));
@@ -1224,10 +1224,19 @@ const isCohost = () => live.on && live.role==='cohost';
 function persistLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }
 
 /* ---- saving: every write must be exactly one version newer than the server's (enforced by the
-   database rules), so two hosts can't silently overwrite each other ---- */
-let pushT = null, pushing = false;
+   database rules), so two hosts can't silently overwrite each other ----
+   Approach chosen after comparing two options for multiple writers on Firebase:
+   - Firebase conditional REST requests (ETag + if-match):
+     https://firebase.blog/posts/2017/07/introducing-conditional-rest-requests
+     https://firebase.google.com/docs/database/rest/save-data
+   - a rule that the stored version only ever goes up by one (community pattern):
+     https://groups.google.com/g/firebase-talk/c/MRGuOSQoBEE
+   We use the rule: the database itself rejects a stale writer, for every client, and it needs no
+   extra request headers from the browser. A refused writer reloads the latest version. */
+let pushT = null, pushing = false, retryT = null;
 function pushLive(){
   if(IS_VIEWER || !live.on || !live.room || !state || state.screen==='setup' || !liveReady()) return;
+  if(!live.dirty){ live.dirty = true; liveSave(); } // something local is waiting to be saved
   clearTimeout(pushT);
   pushT = setTimeout(doPush, 400);
 }
@@ -1244,30 +1253,49 @@ async function doPush(){
     const body = { owner:live.owner, t:{'.sv':'timestamp'}, state:{ ...state, undoStack:[] } };
     const r = await fetch(roomUrl(live.room, token), { method:'PUT', body:JSON.stringify(body) });
     if(r.ok){
-      live.baseRev = next; liveSave(); persistLocal();
+      live.baseRev = next; live.dirty = false; liveSave(); persistLocal();
+      clearTimeout(retryT);
       if(live.failing){ live.failing = false; renderStatus(); }
       if(live.role!=='cohost') ensureHostKey();
-    } else await handleRejectedPush();
+    } else await handleRejectedPush(r.status);
   }catch(err){ markFailing(); }
   finally{ pushing = false; }
 }
 async function pushNow(){ clearTimeout(pushT); await doPush(); }
+/* bad signal or a server hiccup: keep everything, keep retrying in the background */
 function markFailing(){
-  if(!live.failing){ live.failing = true; renderStatus(); toast("Live view couldn't update. It will retry on your next change."); }
+  if(!live.failing){ live.failing = true; renderStatus(); toast("Live view couldn't update. It keeps retrying."); }
+  clearTimeout(retryT);
+  retryT = setTimeout(()=>{ if(live.dirty) pushLive(); }, 20000);
 }
-/* a refused save: either the other host changed something first, or this device lost access */
-async function handleRejectedPush(){
-  let room = null;
-  try{ const r = await fetch(roomUrl(live.room)); room = r.ok ? await r.json() : null; }catch(e){ markFailing(); return; }
-  if(!room){
+window.addEventListener('online', ()=>{ if(live.on && live.dirty) pushLive(); });
+
+/* GET the room. Returns { ok:true, room } where room is null only when it really doesn't exist,
+   or { ok:false } for any network or server trouble (which must never be read as "deleted"). */
+async function fetchRoom(id){
+  try{
+    const r = await fetch(roomUrl(id));
+    if(!r.ok) return { ok:false };
+    return { ok:true, room: await r.json() };
+  }catch(e){ return { ok:false }; }
+}
+/* a refused save: either the other host changed something first, or this device lost access.
+   Anything other than "permission denied" is treated as a temporary problem. */
+async function handleRejectedPush(status){
+  if(status!==401 && status!==403){ markFailing(); return; }
+  const f = await fetchRoom(live.room);
+  if(!f.ok){ markFailing(); return; }
+  const room = f.room;
+  if(room===null){
     if(isCohost()){ endCohost('The host stopped sharing this session.'); return; }
-    // the owner's room is gone (expired or removed elsewhere): start a fresh one
+    // the owner's room is really gone (expired or removed elsewhere): start a fresh one
     live.room = newRoomId(); live.baseRev = 0; live.hostKey = null; liveSave(); pushLive();
     toast('Your live link was renewed. Show the new QR.');
     return;
   }
   if((room.state && room.state.rev || 0) > (live.baseRev||0)){
-    adoptRoom(room);
+    live.dirty = false;
+    adoptRoom(room, true);
     toast("The other host made a change at the same moment. Yours wasn't saved, so please redo it.");
     return;
   }
@@ -1286,7 +1314,8 @@ function subscribeHost(){
   }catch(e){}
 }
 function unsubscribeHost(){ if(hostES){ hostES.close(); hostES = null; } }
-async function refetchRoom(){ try{ const r = await fetch(roomUrl(live.room)); onRemoteRoom(r.ok ? await r.json() : null); }catch(e){} }
+async function refetchRoom(){ const f = await fetchRoom(live.room); if(f.ok) onRemoteRoom(f.room); }
+/* the live stream only sends null when the room was actually deleted */
 function onRemoteRoom(room){
   if(!live.on || IS_VIEWER) return;
   if(!room){ if(isCohost()) endCohost('The host stopped sharing this session.'); return; }
@@ -1295,11 +1324,46 @@ function onRemoteRoom(room){
   if(pushT || pushing) return;          // we have an unsaved change; the save will sort out who wins
   adoptRoom(room);
 }
-function adoptRoom(room){
+const onSetup = () => !state || state.screen==='setup';
+/* Take the other host's version. If this device is setting up a new session, keep the setup
+   (it replaces the shared session when it starts) and only note the version. */
+function adoptRoom(room, force){
+  if(!force && onSetup()){ live.baseRev = room.state.rev || 0; liveSave(); return; }
   state = normalizeState(room.state);
   state.undoStack = []; // undo history belongs to one device; after the other host's change it no longer applies
   live.baseRev = room.state.rev || 0; liveSave(); persistLocal();
+  safeRender();
+}
+/* Re-render without wiping what someone is typing: wait until they leave the field.
+   Checked on a short timer rather than a blur event, which doesn't fire reliably when the
+   app goes to the background mid-word. */
+let renderWhenBlurred = false;
+function safeRender(){
+  const typing = ()=>{ const a = document.activeElement; return !!a && a.tagName==='INPUT' && $app.contains(a); };
+  if(typing()){
+    renderStatus();
+    if(!renderWhenBlurred){
+      renderWhenBlurred = true;
+      const t = setInterval(()=>{ if(!typing()){ clearInterval(t); renderWhenBlurred = false; if(!drag) render(); } }, 400);
+    }
+    return;
+  }
   if(!drag) render();
+}
+/* After time away (offline, app closed): send changes the server never got, or, if the other
+   host changed the session meanwhile, take theirs and say so instead of dropping ours silently. */
+function reconcile(room){
+  const rev = room.state && room.state.rev || 0;
+  if(rev > (live.baseRev||0)){
+    if(onSetup()){ live.baseRev = rev; liveSave(); return; }
+    const lost = live.dirty;
+    live.dirty = false;
+    adoptRoom(room, true);
+    if(lost) toast("Changes made while offline couldn't be saved because the other host changed the session too. Please redo them.");
+  } else {
+    live.baseRev = rev; liveSave();
+    if(live.dirty) pushLive();
+  }
 }
 
 /* ---- owner: going live, co-host key, stopping ---- */
@@ -1316,13 +1380,12 @@ async function goLive(){
   subscribeHost();
   return true;
 }
-/* learn the server's version (and take any newer change a co-host made meanwhile) */
+/* learn the server's version, catching up with (or sending) changes made while away */
 async function syncBaseRev(){
-  try{
-    const r = await fetch(roomUrl(live.room)); const room = r.ok ? await r.json() : null;
-    if(room && room.state){ if((room.state.rev||0) > (live.baseRev||0)) adoptRoom(room); else live.baseRev = room.state.rev||0; }
-    else live.baseRev = 0;
-  }catch(e){}
+  const f = await fetchRoom(live.room);
+  if(!f.ok) return;                       // can't tell right now; the next save sorts it out
+  if(f.room && f.room.state) reconcile(f.room);
+  else { live.baseRev = 0; liveSave(); if(live.dirty) pushLive(); }
 }
 let hostKeyPending = null;
 async function ensureHostKey(){
@@ -1340,17 +1403,20 @@ async function ensureHostKey(){
   })();
   try{ return await hostKeyPending; } finally { hostKeyPending = null; }
 }
-/* new key + remove every co-host: old co-host QRs and devices stop working */
+/* new key first, then clear the co-host list: if the second step fails, old QR codes and
+   devices are still locked out, because their stored key no longer matches */
 async function resetCohosts(){
   if(live.role==='cohost' || !live.room) return false;
+  const oldKey = live.hostKey;
+  live.hostKey = null;
+  if(!(await ensureHostKey())){ live.hostKey = oldKey; liveSave(); return false; }
   try{ const token = await getToken(); await fetch(dbUrl('editors/'+live.room, token), { method:'DELETE' }); }catch(e){}
-  live.hostKey = null; liveSave();
-  return ensureHostKey();
+  return true;
 }
 async function stopLive(){
   if(isCohost()) return leaveCohost();
   const id = live.room; unsubscribeHost();
-  live.on = false; live.room = null; live.hostKey = null; live.hostKeyRoom = null; live.failing = false; live.baseRev = 0; liveSave();
+  live.on = false; live.room = null; live.hostKey = null; live.hostKeyRoom = null; live.failing = false; live.baseRev = 0; live.dirty = false; liveSave();
   if(id && liveReady()){
     try{
       const token = await getToken();
@@ -1361,32 +1427,42 @@ async function stopLive(){
   }
 }
 
-/* ---- co-host: joining from the co-host QR, leaving ---- */
+/* ---- co-host: joining from the co-host QR, leaving ----
+   Returns true when this device became a co-host. Everything is checked before this device's
+   own live session is touched, so a bad or old QR never costs the host their own room. */
 async function joinCohost(roomId, key){
   history.replaceState(null, '', location.pathname); // so a reload doesn't try to join again
-  if(!liveReady()) return;
-  if(isCohost() && live.room===roomId){ subscribeHost(); return; }
+  if(!liveReady()) return false;
+  if(isCohost() && live.room===roomId){ subscribeHost(); return true; }
+  if(live.on && live.role==='owner' && live.room===roomId){
+    toast("That's your own co-host QR. This device already runs the session."); return false;
+  }
   const hasOwn = state && state.screen!=='setup' && state.players && state.players.length;
-  if(live.on && live.role==='owner' && live.room && live.room!==roomId){
-    if(!confirm('This device is sharing its own live session. Switch to co-hosting the other one? Your own live link will stop.')) return;
-    await stopLive();
-  } else if(hasOwn && !confirm('Co-host this session? The session on this device will be replaced by the shared one.')) return;
+  const ownLive = live.on && live.role==='owner' && live.room;
+  if(ownLive){
+    if(!confirm('This device is sharing its own live session. Switch to co-hosting the other one? Your own live link will stop.')) return false;
+  } else if(hasOwn && !confirm('Co-host this session? The session on this device will be replaced by the shared one.')) return false;
   try{
     const token = await getToken();
+    const f = await fetchRoom(roomId);
+    if(!f.ok){ toast("Couldn't join. Check your signal and try again."); return false; }
+    const room = f.room;
+    if(!room || !room.state){ toast('That session has ended.'); return false; }
+    if(room.owner===authInfo.uid){ toast("That's your own session. This device is already its host."); return false; }
     const w = await fetch(dbUrl(`editors/${roomId}/${authInfo.uid}`, token), { method:'PUT', body:JSON.stringify(key) });
-    if(!w.ok){ toast("This co-host QR isn't valid anymore. Ask the host for a new one."); return; }
-    const r = await fetch(roomUrl(roomId)); const room = r.ok ? await r.json() : null;
-    if(!room || !room.state){ toast('That session has ended.'); return; }
+    if(!w.ok){ toast(w.status===401 || w.status===403 ? "This co-host QR isn't valid anymore. Ask the host for a new one." : "Couldn't join. Check your signal and try again."); return false; }
+    if(ownLive) await stopLive();      // only now, once joining is certain
     unsubscribeHost();
-    live = { room:roomId, on:true, role:'cohost', owner:room.owner, baseRev:0, failing:false };
-    adoptRoom(room);
+    live = { room:roomId, on:true, role:'cohost', owner:room.owner, baseRev:0, failing:false, dirty:false };
+    adoptRoom(room, true);
     ui.tab = 'play'; render(); subscribeHost();
     toast("You're co-hosting. Changes sync with the other host.");
-  }catch(e){ toast("Couldn't join. Check your signal and try again."); }
+    return true;
+  }catch(e){ toast("Couldn't join. Check your signal and try again."); return false; }
 }
 async function leaveCohost(){
   const id = live.room; unsubscribeHost();
-  live = { room:null, on:false, role:'owner', baseRev:0, failing:false }; liveSave();
+  live = { room:null, on:false, role:'owner', baseRev:0, failing:false, dirty:false }; liveSave();
   if(id && authInfo){ try{ const token = await getToken(); await fetch(dbUrl(`editors/${id}/${authInfo.uid}`, token), { method:'DELETE' }); }catch(e){} }
 }
 function endCohost(msg){ leaveCohost(); render(); toast(msg + ' Your copy stays on this device.'); }
@@ -1396,28 +1472,31 @@ function endCohost(msg){ leaveCohost(); render(); toast(msg + ' Your copy stays 
    cleanup (planned with the notification helper). */
 async function retireIfExpired(){
   if(!live.room || !liveReady() || isCohost()) return;
-  try{
-    const r = await fetch(roomUrl(live.room));
-    const room = r.ok ? await r.json() : null;
-    if(room && typeof room.t==='number' && room.t < Date.now() - WEEK){
+  const f = await fetchRoom(live.room);
+  if(!f.ok || !f.room) return;
+  const room = f.room;
+  if(typeof room.t==='number' && room.t < Date.now() - WEEK){
+    try{
       const token = await getToken();
       await fetch(dbUrl('editors/'+live.room, token), { method:'DELETE' });
       await fetch(dbUrl('hostkeys/'+live.room, token), { method:'DELETE' });
       await fetch(roomUrl(live.room, token), { method:'DELETE' });
       live.room = null; live.hostKey = null; live.baseRev = 0; liveSave();
-    }
-  }catch(e){}
+    }catch(e){}
+  }
 }
-/* opening the app: reconnect, catch up on the other host's changes, renew a week-old room */
+/* opening the app: reconnect, catch up on the other host's changes, send anything unsaved,
+   renew a week-old room */
 async function resumeLive(){
   if(!live.on || !liveReady()) return;
   if(isCohost()){
-    try{
-      const r = await fetch(roomUrl(live.room)); const room = r.ok ? await r.json() : null;
+    const f = await fetchRoom(live.room);
+    if(f.ok){
+      const room = f.room;
       if(!room){ endCohost('The host stopped sharing this session.'); return; }
       if(typeof room.t==='number' && room.t < Date.now() - WEEK){ endCohost('That live session expired.'); return; }
-      if((room.state && room.state.rev || 0) > (live.baseRev||0)) adoptRoom(room);
-    }catch(e){}
+      reconcile(room);
+    }
     subscribeHost(); renderStatus(); return;
   }
   const before = live.room;
@@ -2057,7 +2136,8 @@ if(vh.get('r')){
   load();
   if(!state){ state={screen:'setup'}; }
   render();
-  joinCohost(vh.get('h'), vh.get('k'));
+  // if this device declines or can't join, it carries on with its own live session
+  joinCohost(vh.get('h'), vh.get('k')).then(joined=>{ if(!joined) resumeLive(); });
 } else if(vh.get('live')){ // a link from before rooms existed
   IS_VIEWER = true; $tabs.classList.add('hidden');
   viewerMessage('This live link is from an older version.<br><span class="subtle">Ask the host to show their QR code again.</span>');
