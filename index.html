@@ -152,8 +152,12 @@
   .quickadd{display:flex; gap:8px; margin-top:12px;}
   /* check-in list: big, alphabetical, one tap per arrival */
   .arrivals{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;}
-  .arrive{display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:3px; text-align:left; padding:10px 12px; min-height:60px;
+  /* each arrival: the top part checks them in, the level pill under it sets their level as they arrive */
+  .arrive{display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:4px 8px 8px;
     background:var(--card2); border:1px solid var(--line); border-radius:14px; min-width:0;}
+  .arrive .in{display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:3px; width:100%; min-height:52px;
+    text-align:left; padding:6px 4px; background:transparent; border-radius:10px;}
+  .arrive .lvb{margin-left:4px;}
   .arrive b{font-size:16px; overflow-wrap:anywhere;}
   .arrive .go{color:var(--accent); font-weight:700; font-size:13px;}
   .quickadd input{flex:1;}
@@ -904,7 +908,7 @@ function renderSetup(){
         <span class="sw"></span>
       </button>
       <button class="btn primary big" style="width:100%; margin-top:12px" data-action="setup-start" ${n<4?'disabled':''}>${checkInPref() ? 'Start & check players in' : 'Start open play'}${n? ` · ${n} players` : ''}</button>
-      <p class="hint">${n<4 ? `Add ${4-n} more player${4-n===1?'':'s'} to start.` : checkInPref() ? 'A court starts as soon as four players are checked in; the rest join as they arrive.' : 'Anyone beyond 4 per court waits in the paddle queue.'}</p>
+      <p class="hint">${n<4 ? `Add ${4-n} more player${4-n===1?'':'s'} to start.` : checkInPref() ? 'Set levels as people check in. Courts wait until you tap Fill court, so games can be grouped by level.' : 'Anyone beyond 4 per court waits in the paddle queue.'}</p>
     </div>
     <div class="card">
       <div class="row" style="justify-content:space-between">
@@ -1026,7 +1030,7 @@ function renderPlay(){
   const awayHtml = away.length ? `
     <div class="card" id="arrivals">
       <div class="row" style="justify-content:space-between"><h3>👋 Not here yet</h3><span class="subtle">${away.length} to arrive</span></div>
-      <div class="arrivals">${away.map(p=>`<button class="arrive" data-action="check-in" data-pid="${p.id}" aria-label="Check in ${esc(p.name)}"><b>${esc(p.name)}</b><span class="go">✓ Here</span></button>`).join('')}</div>
+      <div class="arrivals">${away.map(p=>`<div class="arrive"><button class="in" data-action="check-in" data-pid="${p.id}" aria-label="Check in ${esc(p.name)}"><b>${esc(p.name)}</b><span class="go">✓ Here</span></button>${lvBadge(p.level, p.id)}</div>`).join('')}</div>
       ${away.length>1 ? `<button class="btn ghost" style="width:100%; margin-top:10px" data-action="check-in-all">Everyone's here</button>` : ''}
     </div>` : '';
   // arrivals sit at the bottom: play starts as soon as four are in, nobody waits for everyone
